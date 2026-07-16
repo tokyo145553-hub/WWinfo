@@ -641,7 +641,7 @@
     const jst = new Date(dt.getTime() + 9 * 3600 * 1000);
     const month = jst.getUTCMonth() + 1;
     const day = jst.getUTCDate();
-    const hour = jst.getUTCHours();
+    const hour = String(jst.getUTCHours()).padStart(2, "0");
     const minute = String(jst.getUTCMinutes()).padStart(2, "0");
     return `${month}月${day}日${hour}:${minute}`;
   }
@@ -650,11 +650,11 @@
   function formatPubDatetimeNW(dtStr){
     const dt = new Date(dtStr || Date.now());
     if(isNaN(dt.getTime())) return "";
-    const month = dt.getMonth() + 1;
-    const day = dt.getDate();
-    const hour = dt.getHours();
+    const month = String(dt.getMonth() + 1).padStart(2, "0");
+    const day = String(dt.getDate()).padStart(2, "0");
+    const hour = String(dt.getHours()).padStart(2, "0");
     const minute = String(dt.getMinutes()).padStart(2, "0");
-    return `${month}月${day}日${hour}:${minute}`;
+    return `${month}月${day}日${hour}時${minute}分`;
   }
 
   function getPrefectureText(head){
