@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>気象警報モニター | JMA Feed Watch</title>
+<meta name="description" content="気象庁XML電文フィードを1秒間隔で監視し、警報・注意報の発表状況を表示するモニターです。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #0a0e17;
+    --panel: #11172a;
+    --panel-alt: #161d33;
+    --border: #232c47;
+    --border-soft: #1a2138;
+    --text: #e8ecf6;
+    --text-dim: #7c88a8;
+    --text-faint: #4c5674;
+    --accent: #2dd4bf;
+    --accent-dim: #1a8f82;
+    --lv5: #ffffff;
+    --lv5-bg: #050608;
+    --lv5-line: #ff3b3b;
+    --lv4: #b565ff;
+    --lv3: #ef4444;
+    --downgrade: #f5b700;
+    --lift: #3b82f6;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --sans: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
+  }
+
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(45,212,191,0.06), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(181,101,255,0.05), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  }
+
+  /* ---------- Header console ---------- */
+  header{
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(10,14,23,0.92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .sweep{
+    height: 2px;
+    width: 100%;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    background-size: 200% 100%;
+    animation: sweep 2.2s linear infinite;
+    opacity: 0.75;
+  }
+  @keyframes sweep{
+    0%{ background-position: 200% 0; }
+    100%{ background-position: -200% 0; }
+  }
+
+  .console-inner{
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 18px 20px 16px;
+  }
+
+  .title-row{
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .title-block h1{
+    margin: 0;
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: 0.02em;
+    color: var(--text);
+  }
+  .title-block h1 .mark{ color: var(--accent); }
+  .title-block .sub{
+    margin-top: 3px;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-family: var(--mono);
+    letter-spacing: 0.03em;
+  }
+
+  .clock{
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-dim);
+    text-align: right;
+    line-height: 1.5;
+  }
+  .clock .time{ color: var(--text); font-size: 15px; font-weight: 600; }
+
+  .control-row{
+    margin-top: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .status-pill{
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    padding: 6px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text-dim);
+  }
+  .status-pill .dot{
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-faint);
+    flex: none;
+  }
+  .status-pill.live .dot{
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(45,212,191,0.6);
+    animation: pulse 1.6s ease-out infinite;
+  }
+  @keyframes pulse{
+    0%{ box-shadow: 0 0 0 0 rgba(45,212,191,0.55); }
+    70%{ box-shadow: 0 0 0 7px rgba(45,212,191,0); }
+    100%{ box-shadow: 0 0 0 0 rgba(45,212,191,0); }
+  }
+  .status-pill.live{ color: var(--accent); border-color: var(--accent-dim); }
+
+  button{
+    font-family: var(--mono);
+    cursor: pointer;
+  }
+
+  .btn{
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12.5px;
+    letter-spacing: 0.03em;
+    padding: 7px 13px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--panel-alt);
+    color: var(--text);
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+  }
+  .btn:hover{ border-color: var(--accent-dim); background: #1c2440; }
+  .btn:active{ transform: translateY(1px); }
+  .btn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .btn.primary{
+    background: var(--accent);
+    color: #05221e;
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .btn.primary:hover{ background: #38e5cf; }
+  .btn.primary.spinning .ico{ animation: spin 0.8s linear infinite; }
+  @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  .toggle{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: var(--panel);
+    user-select: none;
+  }
+  .switch{
+    position: relative;
+    width: 30px; height: 16px;
+    border-radius: 20px;
+    background: #2a3358;
+    border: 1px solid var(--border);
+    transition: background 0.15s ease;
+    flex: none;
+  }
+  .switch::after{
+    content:"";
+    position: absolute;
+    top: 1px; left: 1px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: transform 0.15s ease, background 0.15s ease;
+  }
+  .toggle input{ display:none; }
+  .toggle input:checked + .switch{ background: var(--accent-dim); border-color: var(--accent); }
+  .toggle input:checked + .switch::after{ transform: translateX(14px); background: #eafffb; }
+
+  details.settings{
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-dim);
+  }
+  details.settings summary{
+    cursor: pointer;
+    list-style: none;
+    color: var(--text-faint);
+    letter-spacing: 0.03em;
+  }
+  details.settings summary::-webkit-details-marker{ display:none; }
+  details.settings summary:hover{ color: var(--text-dim); }
+  details.settings .settings-body{
+    margin-top: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    background: var(--panel);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  details.settings label{ display:flex; align-items:center; gap:8px; cursor:pointer; }
+  details.settings input[type=checkbox]{ accent-color: var(--accent); }
+
+  /* ---------- Body / feed ---------- */
+  main{
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 22px 20px 80px;
+  }
+
+  .banner{
+    display:none;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    padding: 12px 14px;
+    border-radius: 4px;
+    margin-bottom: 18px;
+    border: 1px solid #6b2f2f;
+    background: #2a1414;
+    color: #ffb4a8;
+  }
+  .banner.show{ display:block; }
+  .banner a{ color: #ffd7cf; }
+
+  .stat-row{
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .stat{
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    padding: 5px 9px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    background: var(--panel);
+  }
+  .stat b{ color: var(--text); font-weight: 600; }
+
+  .empty-state{
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    padding: 46px 24px;
+    text-align: center;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.9;
+  }
+  .empty-state .big{ font-size: 22px; color: var(--text-dim); margin-bottom: 6px; }
+
+  .feed{
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .card{
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--text-faint);
+    border-radius: 4px;
+    overflow: hidden;
+    animation: enter 0.35s ease both;
+  }
+  .card.lv5{ border-left-color: var(--lv5-line); }
+  .card.lv4{ border-left-color: var(--lv4); }
+  .card.lv3{ border-left-color: var(--lv3); }
+  .card.lv2{ border-left-color: var(--downgrade); }
+  .card.lv1{ border-left-color: var(--lift); }
+
+  @keyframes enter{
+    from{ opacity: 0; transform: translateY(-6px); }
+    to{ opacity: 1; transform: translateY(0); }
+  }
+
+  .card-head{
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--panel-alt);
+  }
+  .card-head-text{ min-width: 0; }
+  .card-kind{
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 13.5px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .lv-badge{
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background: var(--text-faint);
+    color: #0a0e17;
+  }
+  .card.lv5 .lv-badge{ background: var(--lv5); color: #0a0e17; box-shadow: 0 0 0 1px var(--lv5-line) inset; }
+  .card.lv4 .lv-badge{ background: var(--lv4); color: #1a0b2e; }
+  .card.lv3 .lv-badge{ background: var(--lv3); color: #2b0a0a; }
+  .card.lv2 .lv-badge{ background: var(--downgrade); color: #2b2205; }
+  .card.lv1 .lv-badge{ background: var(--lift); color: #06183a; }
+
+  .card-meta{
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .card-meta .pref{ color: var(--text); }
+  .card-meta .time{ font-family: var(--mono); }
+
+  .copy-btn{
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    padding: 6px 10px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text-dim);
+    transition: all 0.15s ease;
+  }
+  .copy-btn:hover{ border-color: var(--accent-dim); color: var(--accent); }
+  .copy-btn.copied{ border-color: var(--accent); color: var(--accent); background: rgba(45,212,191,0.08); }
+
+  .card-body{
+    padding: 13px 14px 15px;
+  }
+  .card-body pre{
+    margin: 0;
+    font-family: var(--sans);
+    font-size: 13.5px;
+    line-height: 1.85;
+    color: #d3d9ea;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  footer{
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 0 20px 40px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    line-height: 1.8;
+  }
+  footer a{ color: var(--text-dim); }
+
+  @media (max-width: 560px){
+    .console-inner{ padding: 14px 14px 12px; }
+    .title-row{ flex-direction: column; align-items: flex-start; }
+    .clock{ text-align: left; }
+    main{ padding: 18px 14px 60px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="sweep" id="sweep"></div>
+  <div class="console-inner">
+    <div class="title-row">
+      <div class="title-block">
+        <h1><span class="mark">■</span> 気象警報モニター</h1>
+        <div class="sub">JMA XML FEED WATCH — extra.xml / VPWW55–60</div>
+      </div>
+      <div class="clock">
+        <div class="time" id="clockTime">--:--:--</div>
+        <div id="clockDate">----年--月--日</div>
+      </div>
+    </div>
+
+    <div class="control-row">
+      <span class="status-pill" id="statusPill"><span class="dot"></span><span id="statusText">監視停止中</span></span>
+
+      <label class="toggle">
+        <input type="checkbox" id="autoToggle" checked>
+        <span class="switch"></span>
+        自動更新（1秒）
+      </label>
+
+      <button class="btn primary" id="refreshBtn">
+        <span class="ico">⟳</span> 今すぐ更新
+      </button>
+
+      <span class="status-pill" id="lastCheckPill"><span class="dot" style="background:var(--text-faint)"></span>最終確認: —</span>
+    </div>
+
+    <details class="settings">
+      <summary>詳細設定</summary>
+      <div class="settings-body">
+        <label><input type="checkbox" id="proxyToggle"> CORSプロキシを経由して取得する（直接取得がブロックされる場合に使用）</label>
+        <label><input type="checkbox" id="soundToggle"> 新規警報の受信時に通知音を鳴らす</label>
+        <div>取得元: <span id="feedUrlLabel"></span></div>
+      </div>
+    </details>
+  </div>
+</header>
+
+<main>
+  <div class="banner" id="errorBanner"></div>
+
+  <div class="stat-row">
+    <span class="stat">巡回回数 <b id="cycleCount">0</b></span>
+    <span class="stat">受信件数 <b id="itemCount">0</b></span>
+    <span class="stat">表示中 <b id="visibleCount">0</b></span>
+  </div>
+
+  <div class="empty-state" id="emptyState">
+    <div class="big">監視中…</div>
+    新しい警報・注意報の発表を待っています。<br>
+    気象庁の発表があり次第、ここに自動的に表示されます。
+  </div>
+
+  <div class="feed" id="feed"></div>
+</main>
+
+<footer>
+  <div>データ出典: 気象庁防災情報XML（extra.xml フィード）</div>
+  <div>このページは気象庁の公式サービスではありません。避難行動の判断は必ず気象庁・自治体の公式発表を確認してください。</div>
+</footer>
+
+<audio id="pingSound" preload="auto">
+  <source src="data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAgLsAAIC7AAABAAgAZGF0YQAAAAA=" type="audio/wav">
+</audio>
+
+<script>
+(function(){
+  "use strict";
+
+  // ===================== 設定 =====================
+  const FEED_URL = "https://www.data.jma.go.jp/developer/xml/feed/extra.xml";
+  const POLL_INTERVAL_MS = 1000;
+  const MAX_TARGETS_PER_CYCLE = 15;
+  const MAX_SENT_IDS = 300;
+  const MAX_VISIBLE_CARDS = 150;
+  const CORS_PROXY_PREFIX = "https://corsproxy.io/?url=";
+
+  document.getElementById("feedUrlLabel").textContent = FEED_URL;
+
+  const NS = {
+    R: "http://xml.kishou.go.jp/jmaxml1/",
+    H: "http://xml.kishou.go.jp/jmaxml1/informationBasis1/",
+    B: "http://xml.kishou.go.jp/jmaxml1/body/meteorology1/",
+    ATOM: "http://www.w3.org/2005/Atom",
+  };
+
+  // ===================== DOM helpers (namespace-aware, direct-children only) ===
+  function findChild(el, ns, tag){
+    if(!el) return null;
+    for(const c of el.children){
+      if(c.namespaceURI === ns && c.localName === tag) return c;
+    }
+    return null;
+  }
+  function findChildren(el, ns, tag){
+    if(!el) return [];
+    return Array.from(el.children).filter(c => c.namespaceURI === ns && c.localName === tag);
+  }
+  function textOf(el, ns, tag){
+    const c = findChild(el, ns, tag);
+    return c ? (c.textContent || "").trim() : null;
+  }
+  function parseXmlRoot(text){
+    const doc = new DOMParser().parseFromString(text, "application/xml");
+    if(doc.querySelector("parsererror")){
+      throw new Error("XMLの解析に失敗しました");
+    }
+    return doc.documentElement;
+  }
+
+  function formatPubDatetime(isoStr){
+    if(!isoStr) return "";
+    const dt = new Date(isoStr);
+    if(isNaN(dt.getTime())) return "";
+    const jst = new Date(dt.getTime() + 9 * 3600 * 1000);
+    const month = jst.getUTCMonth() + 1;
+    const day = jst.getUTCDate();
+    const hour = jst.getUTCHours();
+    const minute = String(jst.getUTCMinutes()).padStart(2, "0");
+    return `${month}月${day}日${hour}:${minute}`;
+  }
+
+  function getPrefectureText(head){
+    const headline = findChild(head, NS.H, "Headline");
+    if(!headline) return "";
+    const infos = findChildren(headline, NS.H, "Information");
+    const info = infos.find(i => i.getAttribute("type") === "気象警報・注意報（府県予報区等）");
+    if(!info) return "";
+    const names = [];
+    for(const item of findChildren(info, NS.H, "Item")){
+      const areas = findChild(item, NS.H, "Areas");
+      if(!areas) continue;
+      for(const area of findChildren(areas, NS.H, "Area")){
+        const name = textOf(area, NS.H, "Name");
+        if(name) names.push(name);
+      }
+    }
+    const seen = new Set();
+    const uniq = [];
+    for(const n of names){ if(!seen.has(n)){ seen.add(n); uniq.push(n); } }
+    return uniq.join("・");
+  }
+
+  function getHeadlineText(head){
+    const headline = findChild(head, NS.H, "Headline");
+    if(!headline) return "";
+    const t = findChild(headline, NS.H, "Text");
+    return t ? (t.textContent || "").trim() : "";
+  }
+
+  function severityLevel(hasLv5, hasLv4, hasLv3, hasDown, hasLift){
+    if(hasLv5) return 5;
+    if(hasLv4) return 4;
+    if(hasLv3) return 3;
+    if(hasDown) return 2;
+    if(hasLift) return 1;
+    return 0;
+  }
+
+  // ===================== パーサー: VPWW55/56/57（大雨・土砂災害・高潮） =====================
+  function parseVpww55_56_57(root){
+    const head = findChild(root, NS.H, "Head");
+    const control = findChild(root, NS.R, "Control");
+
+    const rawTitle = textOf(control, NS.R, "Title") || "";
+    const stripped = rawTitle.replace(/^気象警報・注意報（Ｒ０６）/, "");
+    const m = stripped.match(/（(.+?)）$/);
+    const type_ = m ? m[1] : null;
+    const kindName = type_ === "土砂" ? "土砂災害" : type_;
+
+    const pub = formatPubDatetime(textOf(head, NS.H, "ReportDateTime"));
+    const prefectureText = getPrefectureText(head);
+    const headlineText = getHeadlineText(head);
+
+    const w = {
+      level5: { iss: [], con: [] },
+      level4: { iss: [], dwn5to4: [], con: [] },
+      level3: { iss: [], dwn5to3: [], dwn4to3: [], con: [] },
+      dwn5to2: [], dwn4to2: [], dwn3to2: [], lft: [],
+    };
+
+    const body = findChild(root, NS.B, "Body");
+    const notice = textOf(body, NS.B, "Notice") || "";
+
+    const warnings = findChildren(body, NS.B, "Warning");
+    const target = warnings.find(x => x.getAttribute("type") === "気象警報・注意報（市町村等）");
+    if(!target) return null;
+
+    for(const item of findChildren(target, NS.B, "Item")){
+      const kind = findChild(item, NS.B, "Kind");
+      const name = textOf(kind, NS.B, "Name");
+      const status = textOf(kind, NS.B, "Status");
+      const lastKind = kind ? findChild(kind, NS.B, "LastKind") : null;
+      const lastName = lastKind ? textOf(lastKind, NS.B, "Name") : null;
+      const areaEl = findChild(item, NS.B, "Area");
+      const area = areaEl ? textOf(areaEl, NS.B, "Name") : null;
+
+      if(status === "発表警報・注意報はなし") continue;
+
+      const isSpec = !!name && name.includes("特別警報");
+      const isDanger = !!name && name.includes("危険警報");
+      const isWarn = !!name && name.includes("警報") && !isSpec && !isDanger;
+      const isCaution = !!name && name.includes("注意報");
+
+      if(status === "発表"){
+        if(isSpec) w.level5.iss.push(area);
+        else if(isDanger) w.level4.iss.push(area);
+        else if(isWarn) w.level3.iss.push(area);
+        continue;
+      }
+      if(status === "継続"){
+        if(isSpec) w.level5.con.push(area);
+        else if(isDanger) w.level4.con.push(area);
+        else if(isWarn) w.level3.con.push(area);
+        continue;
+      }
+      if(isCaution){
+        if(lastName && lastName.includes("特別警報")) w.dwn5to2.push(area);
+        else if(lastName && lastName.includes("危険警報")) w.dwn4to2.push(area);
+        else if(lastName && lastName.includes("警報")) w.dwn3to2.push(area);
+        continue;
+      }
+      if(isDanger && lastName && lastName.includes("特別警報")){ w.level4.dwn5to4.push(area); continue; }
+      if(isWarn && lastName && lastName.includes("特別警報")){ w.level3.dwn5to3.push(area); continue; }
+      if(isWarn && lastName && lastName.includes("危険警報")){ w.level3.dwn4to3.push(area); continue; }
+      if(status === "解除"){ w.lft.push(area); continue; }
+    }
+
+    const isEmpty = !(
+      w.level5.iss.length || w.level5.con.length ||
+      w.level4.iss.length || w.level4.dwn5to4.length || w.level4.con.length ||
+      w.level3.iss.length || w.level3.dwn5to3.length || w.level3.dwn4to3.length || w.level3.con.length ||
+      w.dwn5to2.length || w.dwn4to2.length || w.dwn3to2.length || w.lft.length
+    );
+    if(isEmpty) return null;
+
+    let out = "";
+    if(w.level5.iss.length || w.level5.con.length){
+      out += `⬛️レベル5${kindName}特別警報⬛️\n`;
+      if(w.level5.iss.length) out += `【発表】${w.level5.iss.join("　")}\n`;
+      if(w.level5.con.length) out += `【継続】${w.level5.con.join("　")}\n`;
+      out += "\n";
+    }
+    if(w.level4.iss.length || w.level4.dwn5to4.length || w.level4.con.length){
+      out += `🟪レベル4${kindName}危険警報🟪\n`;
+      if(w.level4.iss.length) out += `【発表】${w.level4.iss.join("　")}\n`;
+      if(w.level4.dwn5to4.length) out += `【特別警報から危険警報】${w.level4.dwn5to4.join("　")}\n`;
+      if(w.level4.con.length) out += `【継続】${w.level4.con.join("　")}\n`;
+      out += "\n";
+    }
+    if(w.level3.iss.length || w.level3.dwn5to3.length || w.level3.dwn4to3.length || w.level3.con.length){
+      out += `🟥レベル3${kindName}警報🟥\n`;
+      if(w.level3.iss.length) out += `【発表】${w.level3.iss.join("　")}\n`;
+      if(w.level3.dwn5to3.length) out += `【特別警報から警報】${w.level3.dwn5to3.join("　")}\n`;
+      if(w.level3.dwn4to3.length) out += `【危険警報から警報】${w.level3.dwn4to3.join("　")}\n`;
+      if(w.level3.con.length) out += `【継続】${w.level3.con.join("　")}\n`;
+      out += "\n";
+    }
+    if(w.dwn5to2.length){ out += `🟨${kindName}特別警報から注意報🟨\n${w.dwn5to2.join("　")}\n\n`; }
+    if(w.dwn4to2.length){ out += `🟨${kindName}危険警報から注意報🟨\n${w.dwn4to2.join("　")}\n\n`; }
+    if(w.dwn3to2.length){ out += `🟨${kindName}警報から注意報🟨\n${w.dwn3to2.join("　")}\n\n`; }
+    if(w.lft.length){ out += `🟦${kindName}警報等解除🟦\n${w.lft.join("　")}\n\n`; }
+
+    const message = buildMessage(kindName, prefectureText, pub, headlineText, notice, out);
+    const level = severityLevel(
+      w.level5.iss.length || w.level5.con.length,
+      w.level4.iss.length || w.level4.dwn5to4.length || w.level4.con.length,
+      w.level3.iss.length || w.level3.dwn5to3.length || w.level3.dwn4to3.length || w.level3.con.length,
+      w.dwn5to2.length || w.dwn4to2.length || w.dwn3to2.length,
+      w.lft.length
+    );
+
+    return { kindName, prefectureText, pub, message, level };
+  }
+
+  // ===================== パーサー: VPWW58（暴風・暴風雪） =====================
+  function parseVpww58(root){
+    const head = findChild(root, NS.H, "Head");
+
+    const rawTitle = textOf(head, NS.H, "Title") || "";
+    const kindName = rawTitle.includes("雪") ? "暴風・暴風雪" : "暴風";
+
+    const pub = formatPubDatetime(textOf(head, NS.H, "ReportDateTime"));
+    const prefectureText = getPrefectureText(head);
+    const headlineText = getHeadlineText(head);
+
+    function newGroup(){
+      return { level5: { iss: [], con: [] }, level3: { iss: [], dwn5to3: [], con: [] }, dwn5to2: [], dwn3to2: [], lft: [] };
+    }
+    const groups = { storm: newGroup(), blizzard: newGroup() };
+
+    const body = findChild(root, NS.B, "Body");
+    const notice = textOf(body, NS.B, "Notice") || "";
+
+    const warnings = findChildren(body, NS.B, "Warning");
+    const target = warnings.find(x => x.getAttribute("type") === "気象警報・注意報（市町村等）");
+    if(!target) return null;
+
+    for(const item of findChildren(target, NS.B, "Item")){
+      const kind = findChild(item, NS.B, "Kind");
+      const name = textOf(kind, NS.B, "Name");
+      const status = textOf(kind, NS.B, "Status");
+      const lastKind = kind ? findChild(kind, NS.B, "LastKind") : null;
+      const lastName = lastKind ? textOf(lastKind, NS.B, "Name") : null;
+      const areaEl = findChild(item, NS.B, "Area");
+      const area = areaEl ? textOf(areaEl, NS.B, "Name") : null;
+
+      if(status === "発表警報・注意報はなし") continue;
+
+      const isSpec = !!name && name.includes("特別警報");
+      const isWarn = !!name && name.includes("警報") && !isSpec;
+      const isCaution = !!name && name.includes("注意報");
+      const isBlizzard = !!name && name.includes("風雪");
+      const g = isBlizzard ? groups.blizzard : groups.storm;
+
+      if(status === "発表"){
+        if(isSpec) g.level5.iss.push(area);
+        else if(isWarn) g.level3.iss.push(area);
+        continue;
+      }
+      if(status === "継続"){
+        if(isSpec) g.level5.con.push(area);
+        else if(isWarn) g.level3.con.push(area);
+        continue;
+      }
+      if(isCaution){
+        if(lastName && lastName.includes("特別警報")) g.dwn5to2.push(area);
+        else if(lastName && lastName.includes("警報")) g.dwn3to2.push(area);
+        continue;
+      }
+      if(isWarn && lastName && lastName.includes("特別警報")){ g.level3.dwn5to3.push(area); continue; }
+      if(status === "解除"){ g.lft.push(area); continue; }
+    }
+
+    function groupEmpty(g){
+      return !(g.level5.iss.length || g.level5.con.length || g.level3.iss.length || g.level3.dwn5to3.length || g.level3.con.length || g.dwn5to2.length || g.dwn3to2.length || g.lft.length);
+    }
+    if(groupEmpty(groups.storm) && groupEmpty(groups.blizzard)) return null;
+
+    let out = "";
+    let g = groups.blizzard;
+    if(g.level5.iss.length || g.level5.con.length){
+      out += "⬛️暴風雪特別警報⬛️\n";
+      if(g.level5.iss.length) out += `【発表】${g.level5.iss.join("　")}\n`;
+      if(g.level5.con.length) out += `【継続】${g.level5.con.join("　")}\n`;
+      out += "\n";
+    }
+    g = groups.storm;
+    if(g.level5.iss.length || g.level5.con.length){
+      out += "⬛️暴風特別警報⬛️\n";
+      if(g.level5.iss.length) out += `【発表】${g.level5.iss.join("　")}\n`;
+      if(g.level5.con.length) out += `【継続】${g.level5.con.join("　")}\n`;
+      out += "\n";
+    }
+    g = groups.blizzard;
+    if(g.level3.iss.length || g.level3.dwn5to3.length || g.level3.con.length){
+      out += "🟥暴風雪警報🟥\n";
+      if(g.level3.iss.length) out += `【発表】${g.level3.iss.join("　")}\n`;
+      if(g.level3.dwn5to3.length) out += `【特別警報から警報】${g.level3.dwn5to3.join("　")}\n`;
+      if(g.level3.con.length) out += `【継続】${g.level3.con.join("　")}\n`;
+      out += "\n";
+    }
+    g = groups.storm;
+    if(g.level3.iss.length || g.level3.dwn5to3.length || g.level3.con.length){
+      out += "🟥暴風警報🟥\n";
+      if(g.level3.iss.length) out += `【発表】${g.level3.iss.join("　")}\n`;
+      if(g.level3.dwn5to3.length) out += `【特別警報から警報】${g.level3.dwn5to3.join("　")}\n`;
+      if(g.level3.con.length) out += `【継続】${g.level3.con.join("　")}\n`;
+      out += "\n";
+    }
+    g = groups.blizzard;
+    if(g.dwn5to2.length){ out += `🟨暴風雪特別警報から注意報🟨\n${g.dwn5to2.join("　")}\n\n`; }
+    if(g.dwn3to2.length){ out += `🟨暴風雪警報から注意報🟨\n${g.dwn3to2.join("　")}\n\n`; }
+    g = groups.storm;
+    if(g.dwn5to2.length){ out += `🟨暴風特別警報から注意報🟨\n${g.dwn5to2.join("　")}\n\n`; }
+    if(g.dwn3to2.length){ out += `🟨暴風警報から注意報🟨\n${g.dwn3to2.join("　")}\n\n`; }
+    g = groups.blizzard;
+    if(g.lft.length){ out += `🟦暴風雪警報等解除🟦\n${g.lft.join("　")}\n\n`; }
+    g = groups.storm;
+    if(g.lft.length){ out += `🟦暴風警報等解除🟦\n${g.lft.join("　")}\n\n`; }
+
+    const message = buildMessage(kindName, prefectureText, pub, headlineText, notice, out);
+
+    const hasLv5 = groups.storm.level5.iss.length || groups.storm.level5.con.length || groups.blizzard.level5.iss.length || groups.blizzard.level5.con.length;
+    const hasLv3 = groups.storm.level3.iss.length || groups.storm.level3.dwn5to3.length || groups.storm.level3.con.length || groups.blizzard.level3.iss.length || groups.blizzard.level3.dwn5to3.length || groups.blizzard.level3.con.length;
+    const hasDown = groups.storm.dwn5to2.length || groups.storm.dwn3to2.length || groups.blizzard.dwn5to2.length || groups.blizzard.dwn3to2.length;
+    const hasLift = groups.storm.lft.length || groups.blizzard.lft.length;
+    const level = severityLevel(hasLv5, false, hasLv3, hasDown, hasLift);
+
+    return { kindName, prefectureText, pub, message, level };
+  }
+
+  // ===================== パーサー: VPWW59/60（波浪・大雪） =====================
+  function parseVpww59_60(root){
+    const head = findChild(root, NS.H, "Head");
+    const control = findChild(root, NS.R, "Control");
+
+    const rawTitle = textOf(control, NS.R, "Title") || "";
+    const stripped = rawTitle.replace(/^気象警報・注意報（Ｒ０６）/, "");
+    const m = stripped.match(/（(.+?)）$/);
+    const kindName = m ? m[1] : null;
+
+    const pub = formatPubDatetime(textOf(head, NS.H, "ReportDateTime"));
+    const prefectureText = getPrefectureText(head);
+    const headlineText = getHeadlineText(head);
+
+    const w = {
+      level5: { iss: [], con: [] },
+      level3: { iss: [], dwn5to3: [], con: [] },
+      dwn5to2: [], dwn3to2: [], lft: [],
+    };
+
+    const body = findChild(root, NS.B, "Body");
+    const notice = textOf(body, NS.B, "Notice") || "";
+
+    const warnings = findChildren(body, NS.B, "Warning");
+    const target = warnings.find(x => x.getAttribute("type") === "気象警報・注意報（市町村等）");
+    if(!target) return null;
+
+    for(const item of findChildren(target, NS.B, "Item")){
+      const kind = findChild(item, NS.B, "Kind");
+      const name = textOf(kind, NS.B, "Name");
+      const status = textOf(kind, NS.B, "Status");
+      const lastKind = kind ? findChild(kind, NS.B, "LastKind") : null;
+      const lastName = lastKind ? textOf(lastKind, NS.B, "Name") : null;
+      const areaEl = findChild(item, NS.B, "Area");
+      const area = areaEl ? textOf(areaEl, NS.B, "Name") : null;
+
+      if(status === "発表警報・注意報はなし") continue;
+
+      const isSpec = !!name && name.includes("特別警報");
+      const isWarn = !!name && name.includes("警報") && !isSpec;
+      const isCaution = !!name && name.includes("注意報");
+
+      if(status === "発表"){
+        if(isSpec) w.level5.iss.push(area);
+        else if(isWarn) w.level3.iss.push(area);
+        continue;
+      }
+      if(status === "継続"){
+        if(isSpec) w.level5.con.push(area);
+        else if(isWarn) w.level3.con.push(area);
+        continue;
+      }
+      if(isCaution){
+        if(lastName && lastName.includes("特別警報")) w.dwn5to2.push(area);
+        else if(lastName && lastName.includes("警報")) w.dwn3to2.push(area);
+        continue;
+      }
+      if(isWarn && lastName && lastName.includes("特別警報")){ w.level3.dwn5to3.push(area); continue; }
+      if(status === "解除"){ w.lft.push(area); continue; }
+    }
+
+    const isEmpty = !(
+      w.level5.iss.length || w.level5.con.length ||
+      w.level3.iss.length || w.level3.dwn5to3.length || w.level3.con.length ||
+      w.dwn5to2.length || w.dwn3to2.length || w.lft.length
+    );
+    if(isEmpty) return null;
+
+    let out = "";
+    if(w.level5.iss.length || w.level5.con.length){
+      out += `⬛️${kindName}特別警報⬛️\n`;
+      if(w.level5.iss.length) out += `【発表】${w.level5.iss.join("　")}\n`;
+      if(w.level5.con.length) out += `【継続】${w.level5.con.join("　")}\n`;
+      out += "\n";
+    }
+    if(w.level3.iss.length || w.level3.dwn5to3.length || w.level3.con.length){
+      out += `🟥${kindName}警報🟥\n`;
+      if(w.level3.iss.length) out += `【発表】${w.level3.iss.join("　")}\n`;
+      if(w.level3.dwn5to3.length) out += `【特別警報から警報】${w.level3.dwn5to3.join("　")}\n`;
+      if(w.level3.con.length) out += `【継続】${w.level3.con.join("　")}\n`;
+      out += "\n";
+    }
+    if(w.dwn5to2.length){ out += `🟨${kindName}特別警報から注意報🟨\n${w.dwn5to2.join("　")}\n\n`; }
+    if(w.dwn3to2.length){ out += `🟨${kindName}警報から注意報🟨\n${w.dwn3to2.join("　")}\n\n`; }
+    if(w.lft.length){ out += `🟦${kindName}警報等解除🟦\n${w.lft.join("　")}\n\n`; }
+
+    const message = buildMessage(kindName, prefectureText, pub, headlineText, notice, out);
+    const level = severityLevel(
+      w.level5.iss.length || w.level5.con.length,
+      false,
+      w.level3.iss.length || w.level3.dwn5to3.length || w.level3.con.length,
+      w.dwn5to2.length || w.dwn3to2.length,
+      w.lft.length
+    );
+
+    return { kindName, prefectureText, pub, message, level };
+  }
+
+  function buildMessage(kindName, prefectureText, pub, headlineText, notice, out){
+    let msg = `《気象警報（${kindName}）》\n${prefectureText}\n${pub} 発表`;
+    if(headlineText) msg += `\n\n${headlineText}`;
+    if(notice) msg += `\n${notice}`;
+    msg += `\n\n${out}出典：気象庁XML`;
+    return msg;
+  }
+
+  // ===================== フィード監視・振り分け =====================
+  const FUNC_TABLE = {
+    vpww55: parseVpww55_56_57,
+    vpww58: parseVpww58,
+    vpww59: parseVpww59_60,
+  };
+  const FUNC_MAP_PATTERNS = [
+    [/VPWW55/, "vpww55"],
+    [/VPWW56/, "vpww55"],
+    [/VPWW57/, "vpww55"],
+    [/VPWW58/, "vpww58"],
+    [/VPWW59/, "vpww59"],
+    [/VPWW60/, "vpww59"],
+  ];
+  function resolveFunctionName(href){
+    for(const [pattern, fnName] of FUNC_MAP_PATTERNS){
+      if(pattern.test(href)) return fnName;
+    }
+    return null;
+  }
+
+  // ===================== 状態 =====================
+  const state = {
+    sentIds: [],
+    sentSet: new Set(),
+    cycleCount: 0,
+    itemCount: 0,
+    autoOn: true,
+    running: false,
+    timerId: null,
+  };
+
+  const el = {
+    feed: document.getElementById("feed"),
+    emptyState: document.getElementById("emptyState"),
+    errorBanner: document.getElementById("errorBanner"),
+    cycleCount: document.getElementById("cycleCount"),
+    itemCount: document.getElementById("itemCount"),
+    visibleCount: document.getElementById("visibleCount"),
+    statusPill: document.getElementById("statusPill"),
+    statusText: document.getElementById("statusText"),
+    lastCheckPill: document.getElementById("lastCheckPill"),
+    refreshBtn: document.getElementById("refreshBtn"),
+    autoToggle: document.getElementById("autoToggle"),
+    proxyToggle: document.getElementById("proxyToggle"),
+    soundToggle: document.getElementById("soundToggle"),
+    pingSound: document.getElementById("pingSound"),
+    clockTime: document.getElementById("clockTime"),
+    clockDate: document.getElementById("clockDate"),
+  };
+
+  function showError(msg){
+    el.errorBanner.innerHTML = msg;
+    el.errorBanner.classList.add("show");
+  }
+  function clearError(){
+    el.errorBanner.classList.remove("show");
+    el.errorBanner.innerHTML = "";
+  }
+
+  function setStatus(live, text){
+    el.statusText.textContent = text;
+    el.statusPill.classList.toggle("live", live);
+  }
+
+  function fmtNow(){
+    const d = new Date();
+    return d.toLocaleTimeString("ja-JP", { hour12: false });
+  }
+
+  function proxied(url){
+    return el.proxyToggle.checked ? (CORS_PROXY_PREFIX + encodeURIComponent(url)) : url;
+  }
+
+  async function fetchText(url){
+    const res = await fetch(proxied(url), { cache: "no-store" });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.text();
+  }
+
+  function renderCard(card, fileName){
+    el.emptyState.style.display = "none";
+
+    const wrap = document.createElement("div");
+    wrap.className = `card lv${card.level}`;
+
+    const badgeLabel = ["解除等", "解除等", "注意報格下げ", "警報", "危険警報", "特別警報"][card.level] || "情報";
+
+    wrap.innerHTML = `
+      <div class="card-head">
+        <div class="card-head-text">
+          <div class="card-kind">
+            <span class="lv-badge">${badgeLabel}</span>
+            気象警報（${escapeHtml(card.kindName || "情報")}）
+          </div>
+          <div class="card-meta">
+            <span class="pref">${escapeHtml(card.prefectureText || "")}</span>
+            <span class="time">${escapeHtml(card.pub || "")} 発表</span>
+          </div>
+        </div>
+        <button class="copy-btn" type="button">⧉ コピー</button>
+      </div>
+      <div class="card-body"><pre></pre></div>
+    `;
+    wrap.querySelector(".card-body pre").textContent = card.message;
+
+    const copyBtn = wrap.querySelector(".copy-btn");
+    copyBtn.addEventListener("click", async () => {
+      try{
+        await navigator.clipboard.writeText(card.message);
+        copyBtn.classList.add("copied");
+        copyBtn.textContent = "✓ コピーしました";
+        setTimeout(() => {
+          copyBtn.classList.remove("copied");
+          copyBtn.textContent = "⧉ コピー";
+        }, 1600);
+      }catch(e){
+        // フォールバック: 選択してコピーを促す
+        const range = document.createRange();
+        const pre = wrap.querySelector(".card-body pre");
+        range.selectNodeContents(pre);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        copyBtn.textContent = "選択済み（Ctrl+C）";
+        setTimeout(() => { copyBtn.textContent = "⧉ コピー"; }, 2000);
+      }
+    });
+
+    el.feed.prepend(wrap);
+
+    while(el.feed.children.length > MAX_VISIBLE_CARDS){
+      el.feed.removeChild(el.feed.lastChild);
+    }
+    el.visibleCount.textContent = el.feed.children.length;
+
+    if(el.soundToggle.checked){
+      el.pingSound.currentTime = 0;
+      el.pingSound.play().catch(() => {});
+    }
+  }
+
+  function escapeHtml(s){
+    return (s || "").replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[c]));
+  }
+
+  async function runCycle(){
+    if(state.running) return;
+    state.running = true;
+    el.refreshBtn.classList.add("spinning");
+    setStatus(true, "確認中…");
+
+    try{
+      const feedText = await fetchText(FEED_URL);
+      const feedRoot = parseXmlRoot(feedText);
+      const entries = findChildren(feedRoot, NS.ATOM, "entry");
+
+      const targets = [];
+      for(const entry of entries){
+        const link = findChild(entry, NS.ATOM, "link");
+        if(!link) continue;
+        const href = link.getAttribute("href");
+        if(!href) continue;
+        const fnName = resolveFunctionName(href);
+        if(fnName){
+          targets.push([href, fnName]);
+          if(targets.length >= MAX_TARGETS_PER_CYCLE) break;
+        }
+      }
+
+      for(const [href, fnName] of targets){
+        const fileName = href.replace(/\/$/, "").split("/").pop();
+        if(state.sentSet.has(fileName)) continue;
+
+        state.sentSet.add(fileName);
+        state.sentIds.push(fileName);
+        while(state.sentIds.length > MAX_SENT_IDS){
+          const old = state.sentIds.shift();
+          state.sentSet.delete(old);
+        }
+
+        try{
+          const itemText = await fetchText(href);
+          const itemRoot = parseXmlRoot(itemText);
+          const fn = FUNC_TABLE[fnName];
+          const card = fn(itemRoot);
+          if(card){
+            state.itemCount++;
+            el.itemCount.textContent = state.itemCount;
+            renderCard(card, fileName);
+          }
+        }catch(itemErr){
+          console.error("[警報処理エラー]", fnName, itemErr);
+        }
+      }
+
+      clearError();
+      state.cycleCount++;
+      el.cycleCount.textContent = state.cycleCount;
+      el.lastCheckPill.querySelector("span:last-child").textContent = "最終確認: " + fmtNow();
+      setStatus(state.autoOn, state.autoOn ? "監視中" : "手動モード");
+    }catch(err){
+      console.error("[フィード取得エラー]", err);
+      setStatus(false, "取得エラー");
+      showError(
+        `フィードの取得に失敗しました（${escapeHtml(String(err.message || err))}）。<br>` +
+        `気象庁サーバーがブラウザからの直接アクセスをブロックしている可能性があります。` +
+        `「詳細設定」から <b>CORSプロキシを経由して取得する</b> を有効にして再度お試しください。`
+      );
+    }finally{
+      state.running = false;
+      el.refreshBtn.classList.remove("spinning");
+    }
+  }
+
+  // ===================== タイマー制御 =====================
+  function startTimer(){
+    stopTimer();
+    state.timerId = setInterval(runCycle, POLL_INTERVAL_MS);
+  }
+  function stopTimer(){
+    if(state.timerId){ clearInterval(state.timerId); state.timerId = null; }
+  }
+
+  el.autoToggle.addEventListener("change", () => {
+    state.autoOn = el.autoToggle.checked;
+    if(state.autoOn){
+      startTimer();
+      setStatus(true, "監視中");
+    }else{
+      stopTimer();
+      setStatus(false, "監視停止中");
+    }
+  });
+
+  el.refreshBtn.addEventListener("click", () => { runCycle(); });
+
+  // ===================== 時計 =====================
+  function tickClock(){
+    const d = new Date();
+    el.clockTime.textContent = d.toLocaleTimeString("ja-JP", { hour12: false });
+    el.clockDate.textContent = d.toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // ===================== 初期化 =====================
+  setStatus(true, "監視中");
+  startTimer();
+  runCycle();
+})();
+</script>
+</body>
+</html>
