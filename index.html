@@ -356,19 +356,18 @@
     font-weight: 600;
   }
   .ty-body{ padding: 13px 14px 15px; }
-  .ty-body .copy-wrap{
+  .ty-feed{
     display: flex;
-    justify-content: flex-end;
-    margin-bottom: 8px;
+    flex-direction: column;
+    gap: 12px;
   }
-  .ty-body pre{
-    margin: 0;
-    font-family: var(--sans);
-    font-size: 13.5px;
-    line-height: 1.85;
-    color: #d3d9ea;
-    white-space: pre-wrap;
-    word-break: break-word;
+  .ty-empty{
+    display: none;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text-faint);
+    text-align: center;
+    padding: 20px 4px;
   }
 
   .empty-state{
@@ -403,6 +402,8 @@
   .card.lv3{ border-left-color: var(--lv3); }
   .card.lv2{ border-left-color: var(--downgrade); }
   .card.lv1{ border-left-color: var(--lift); }
+  .card.ty{ border-left-color: var(--accent); }
+  .card.ty .lv-badge{ background: var(--accent); color: #05221e; }
 
   @keyframes enter{
     from{ opacity: 0; transform: translateY(-6px); }
