@@ -265,24 +265,6 @@
   .banner.show{ display:block; }
   .banner a{ color: #ffd7cf; }
 
-  .stat-row{
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 20px;
-  }
-  .stat{
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.03em;
-    padding: 5px 9px;
-    border-radius: 3px;
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    background: var(--panel);
-  }
-  .stat b{ color: var(--text); font-weight: 600; }
-
   .empty-state{
     border: 1px dashed var(--border);
     border-radius: 6px;
@@ -423,7 +405,7 @@
     <div class="title-row">
       <div class="title-block">
         <h1><span class="mark">■</span> 気象警報モニター</h1>
-        <div class="sub">JMA XML FEED WATCH — extra.xml / VPWW55–60</div>
+        <div class="sub">JMA XML FEED WATCH — extra.xml / VPWW55–60 ＋ 全国集約(r8)</div>
       </div>
       <div class="clock">
         <div class="time" id="clockTime">--:--:--</div>
@@ -450,7 +432,8 @@
       <div class="settings-body">
         <label><input type="checkbox" id="proxyToggle"> CORSプロキシを経由して取得する（直接取得がブロックされる場合に使用）</label>
         <label><input type="checkbox" id="soundToggle"> 新規警報の受信時に通知音を鳴らす</label>
-        <div>取得元: <span id="feedUrlLabel"></span></div>
+        <div>取得元（フィード）: <span id="feedUrlLabel"></span></div>
+        <div>取得元（全国集約）: <span id="nationwideUrlLabel"></span></div>
       </div>
     </details>
   </div>
@@ -458,11 +441,6 @@
 
 <main>
   <div class="banner" id="errorBanner"></div>
-
-  <div class="stat-row">
-    <span class="stat">受信件数 <b id="itemCount">0</b></span>
-    <span class="stat">表示中 <b id="visibleCount">0</b></span>
-  </div>
 
   <div class="empty-state" id="emptyState">
     <div class="big">監視中…</div>
@@ -474,7 +452,7 @@
 </main>
 
 <footer>
-  <div>データ出典: 気象庁防災情報XML（extra.xml フィード）</div>
+  <div>データ出典: 気象庁防災情報XML（extra.xml フィード）／気象庁 警報・注意報 地域別データ（r8）</div>
   <div>このページは気象庁の公式サービスではありません。避難行動の判断は必ず気象庁・自治体の公式発表を確認してください。</div>
 </footer>
 
@@ -489,10 +467,16 @@
   // ===================== 設定 =====================
   const FEED_URL = "https://www.data.jma.go.jp/developer/xml/feed/extra.xml";
   const POLL_INTERVAL_MS = 1000;
+  const NATIONWIDE_POLL_INTERVAL_MS = 1000;
   const MAX_TARGETS_PER_CYCLE = 15;
   const MAX_SENT_IDS = 300;
   const MAX_VISIBLE_CARDS = 150;
   const CORS_PROXY_PREFIX = "https://corsproxy.io/?url=";
+
+  const JMA_BASE = "https://www.jma.go.jp/bosai";
+  const AREA_JSON_URL = `${JMA_BASE}/common/const/area.json`;
+  const WARNING_R8_BASE_URL = `${JMA_BASE}/warning/data/r8`;
+  const NATIONWIDE_MIN_LEVEL = 3; // 警報以上（3:警報 4:危険警報 5:特別警報）
 
   document.getElementById("feedUrlLabel").textContent = FEED_URL;
 
@@ -502,6 +486,130 @@
     B: "http://xml.kishou.go.jp/jmaxml1/body/meteorology1/",
     ATOM: "http://www.w3.org/2005/Atom",
   };
+
+  // 全国集約(r8)で使う地域コード対応表
+  const regionCodeByName = {
+    "宗谷地方": "011000",
+    "上川・留萌地方": "012000",
+    "網走・北見・紋別地方": "013000",
+    "十勝地方": "014030",
+    "釧路・根室地方": "014100",
+    "胆振・日高地方": "015000",
+    "石狩・空知・後志地方": "016000",
+    "渡島・檜山地方": "017000",
+    "青森県": "020000",
+    "岩手県": "030000",
+    "宮城県": "040000",
+    "秋田県": "050000",
+    "山形県": "060000",
+    "福島県": "070000",
+    "茨城県": "080000",
+    "栃木県": "090000",
+    "群馬県": "100000",
+    "埼玉県": "110000",
+    "千葉県": "120000",
+    "東京都": "130000",
+    "神奈川県": "140000",
+    "新潟県": "150000",
+    "富山県": "160000",
+    "石川県": "170000",
+    "福井県": "180000",
+    "山梨県": "190000",
+    "長野県": "200000",
+    "岐阜県": "210000",
+    "静岡県": "220000",
+    "愛知県": "230000",
+    "三重県": "240000",
+    "滋賀県": "250000",
+    "京都府": "260000",
+    "大阪府": "270000",
+    "兵庫県": "280000",
+    "奈良県": "290000",
+    "和歌山県": "300000",
+    "鳥取県": "310000",
+    "島根県": "320000",
+    "岡山県": "330000",
+    "広島県": "340000",
+    "山口県": "350000",
+    "徳島県": "360000",
+    "香川県": "370000",
+    "愛媛県": "380000",
+    "高知県": "390000",
+    "福岡県": "400000",
+    "佐賀県": "410000",
+    "長崎県": "420000",
+    "熊本県": "430000",
+    "大分県": "440000",
+    "宮崎県": "450000",
+    "奄美地方（鹿児島県）": "460040",
+    "鹿児島県（奄美地方を除く）": "460100",
+    "沖縄本島地方": "471000",
+    "大東島地方": "472000",
+    "宮古島地方": "473000",
+    "八重山地方": "474000"
+  };
+
+  // 全国集約(r8)で使う警報種別コード対応表
+  const NATIONWIDE_WARN_AREA = {
+    "00":{name:"解除",level:null},
+    "02":{name:"暴風雪警報",level:3},
+    "03":{name:"レベル3大雨警報",level:3},
+    "04":{name:"洪水警報",level:3},
+    "05":{name:"暴風警報",level:3},
+    "06":{name:"大雪警報",level:3},
+    "07":{name:"波浪警報",level:3},
+    "08":{name:"レベル3高潮警報",level:3},
+    "09":{name:"レベル3土砂災害警報",level:3},
+    "10":{name:"レベル2大雨注意報",level:2},
+    "12":{name:"大雪注意報",level:2},
+    "13":{name:"風雪注意報",level:2},
+    "14":{name:"雷注意報",level:2},
+    "15":{name:"強風注意報",level:2},
+    "16":{name:"波浪注意報",level:2},
+    "17":{name:"融雪注意報",level:2},
+    "18":{name:"洪水注意報",level:2},
+    "19":{name:"レベル2高潮注意報",level:2},
+    "20":{name:"濃霧注意報",level:2},
+    "21":{name:"乾燥注意報",level:2},
+    "22":{name:"なだれ注意報",level:2},
+    "23":{name:"低温注意報",level:2},
+    "24":{name:"霜注意報",level:2},
+    "25":{name:"着氷注意報",level:2},
+    "26":{name:"着雪注意報",level:2},
+    "27":{name:"その他の注意報",level:2},
+    "29":{name:"レベル2土砂災害注意報",level:2},
+    "32":{name:"暴風雪特別警報",level:5},
+    "33":{name:"レベル5大雨特別警報",level:5},
+    "35":{name:"暴風特別警報",level:5},
+    "36":{name:"大雪特別警報",level:5},
+    "37":{name:"波浪特別警報",level:5},
+    "38":{name:"レベル5高潮特別警報",level:5},
+    "39":{name:"レベル5土砂災害特別警報",level:5},
+    "42":{name:"未定・予約",level:null},
+    "43":{name:"レベル4大雨危険警報",level:4},
+    "45":{name:"未定・予約",level:null},
+    "46":{name:"未定・予約",level:null},
+    "47":{name:"未定・予約",level:null},
+    "48":{name:"レベル4高潮危険警報",level:4},
+    "49":{name:"レベル4土砂災害危険警報",level:4}
+  };
+
+  const NATIONWIDE_WARN_ORDER = [
+    "レベル5大雨特別警報","レベル5土砂災害特別警報","レベル5高潮特別警報",
+    "暴風特別警報","大雪特別警報","暴風雪特別警報","波浪特別警報",
+    "レベル4大雨危険警報","レベル4土砂災害危険警報","レベル4高潮危険警報",
+    "レベル3大雨警報","レベル3土砂災害警報","レベル3高潮警報",
+    "暴風警報","大雪警報","暴風雪警報","波浪警報",
+    "レベル2大雨注意報","レベル2土砂災害注意報","レベル2高潮注意報",
+    "強風注意報","大雪注意報","風雪注意報","雷注意報","波浪注意報","濃霧注意報","乾燥注意報",
+    "融雪注意報","なだれ注意報","低温注意報","霜注意報","着氷注意報","着雪注意報","その他の注意報"
+  ];
+
+  document.getElementById("nationwideUrlLabel").textContent =
+    `${WARNING_R8_BASE_URL}/{regionCode}.json（全国${Object.keys(regionCodeByName).length}地域を集約）`;
+
+  let areaDataCache = null;
+  let lastNationwideContent = null; // 時刻を除いた本文の直近スナップショット（差分検知用）
 
   // ===================== DOM helpers (namespace-aware, direct-children only) ===
   function findChild(el, ns, tag){
@@ -536,6 +644,17 @@
     const day = jst.getUTCDate();
     const hour = jst.getUTCHours();
     const minute = String(jst.getUTCMinutes()).padStart(2, "0");
+    return `${month}月${day}日${hour}:${minute}`;
+  }
+
+  // r8データの reportDatetime 用（オフセット込みのローカル時刻としてそのまま整形）
+  function formatPubDatetimeNW(dtStr){
+    const dt = new Date(dtStr || Date.now());
+    if(isNaN(dt.getTime())) return "";
+    const month = dt.getMonth() + 1;
+    const day = dt.getDate();
+    const hour = dt.getHours();
+    const minute = String(dt.getMinutes()).padStart(2, "0");
     return `${month}月${day}日${hour}:${minute}`;
   }
 
@@ -915,6 +1034,175 @@
     return msg.replace(/\n+$/, "");
   }
 
+  // ===================== 全国集約(r8) =====================
+  function createWarnInfoTemplate(warnArea){
+    const warnByTypeAndArea = {};
+    for(const info of Object.values(warnArea)){
+      if(!info.name || info.name === "解除" || info.name === "未定・予約") continue;
+      warnByTypeAndArea[info.name] = {};
+    }
+    return warnByTypeAndArea;
+  }
+
+  async function getAreaData(){
+    if(!areaDataCache){
+      const res = await fetch(proxied(AREA_JSON_URL), {cache:"no-store"});
+      if(!res.ok) throw new Error(`地域定義JSONの取得に失敗しました: ${res.status}`);
+      areaDataCache = await res.json();
+    }
+    return areaDataCache;
+  }
+
+  function getRegionNameNW(regionCode){
+    for(const name in regionCodeByName){
+      if(regionCodeByName[name] === regionCode) return name;
+    }
+    return regionCode;
+  }
+
+  function getWarnColorNW(level){
+    switch(level){
+      case 2: return "🟨";
+      case 3: return "🟥";
+      case 4: return "🟪";
+      case 5: return "⬛️";
+      default: return "◆";
+    }
+  }
+
+  async function fetchAllR8WarningData(){
+    const regionCodes = Object.values(regionCodeByName);
+    const results = await Promise.all(regionCodes.map(async regionCode => {
+      const url = `${WARNING_R8_BASE_URL}/${regionCode}.json`;
+      try{
+        const res = await fetch(proxied(url), {cache:"no-store"});
+        if(!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        const reports = await res.json();
+        return reports.map(report => ({...report, regionCode}));
+      }catch(e){
+        console.warn(`警報JSON取得失敗: ${url}`, e);
+        return [];
+      }
+    }));
+    return results.flat();
+  }
+
+  async function getNationwideWarnings(){
+    const areaData = await getAreaData();
+    const warnByTypeAndArea = createWarnInfoTemplate(NATIONWIDE_WARN_AREA);
+    let reportDatetime = "";
+    let publishingOffice = "";
+
+    const dataJson = await fetchAllR8WarningData();
+
+    for(const item of dataJson){
+      if(!item || !item.warning) continue;
+      if(reportDatetime === "" || item.reportDatetime > reportDatetime){
+        reportDatetime = item.reportDatetime;
+        publishingOffice = item.publishingOffice || publishingOffice;
+      }
+
+      const largeAreaName = getRegionNameNW(item.regionCode);
+
+      for(const area of item.warning.class20Items || []){
+        const cityInfo = areaData.class20s?.[area.areaCode];
+        if(!cityInfo) continue;
+        const cityName = cityInfo.name;
+
+        for(const w of area.kinds || []){
+          if(!w.code || w.status === "解除") continue;
+          const info = NATIONWIDE_WARN_AREA[w.code];
+          if(!info) continue;
+          const warnName = info.name;
+          if(!warnName || !warnByTypeAndArea[warnName]) continue;
+
+          if(!warnByTypeAndArea[warnName][largeAreaName]) warnByTypeAndArea[warnName][largeAreaName] = [];
+          if(!warnByTypeAndArea[warnName][largeAreaName].includes(cityName)){
+            warnByTypeAndArea[warnName][largeAreaName].push(cityName);
+          }
+        }
+      }
+    }
+
+    return { reportDatetime, publishingOffice, warnInfo: warnByTypeAndArea };
+  }
+
+  // 警報以上(NATIONWIDE_MIN_LEVEL以上)のみを整形。該当なしなら null を返す。
+  function buildNationwideCard(data){
+    const sortedWarnNames = [
+      ...NATIONWIDE_WARN_ORDER.filter(name => data.warnInfo[name]),
+      ...Object.keys(data.warnInfo).filter(name => !NATIONWIDE_WARN_ORDER.includes(name))
+    ];
+
+    let content = "";
+    let count = 0;
+    let maxLevel = 0;
+
+    for(const warnName of sortedWarnNames){
+      const areas = data.warnInfo[warnName];
+      if(Object.keys(areas).length === 0) continue;
+
+      const info = Object.values(NATIONWIDE_WARN_AREA).find(w => w.name === warnName);
+      if(!info || info.level === null || info.level < NATIONWIDE_MIN_LEVEL) continue;
+
+      let block = "";
+      let hasArea = false;
+
+      for(const areaName in areas){
+        const cities = areas[areaName];
+        if(!cities || cities.length === 0) continue;
+
+        if(!hasArea){
+          const mark = getWarnColorNW(info.level);
+          block += `\n\n${mark}${warnName}${mark}`;
+          hasArea = true;
+          count++;
+          if(info.level > maxLevel) maxLevel = info.level;
+        }
+        block += `\n【${areaName}】\n`;
+        block += cities.join("　");
+      }
+      content += block;
+    }
+
+    if(count === 0) return null;
+
+    content = content.trim();
+    const pub = formatPubDatetimeNW(data.reportDatetime);
+    const publishingOffice = data.publishingOffice || "気象庁";
+    const message = `《全国の気象警報》\n${pub} ${publishingOffice}発表\n\n${content}`;
+
+    return {
+      kindName: "全国集約",
+      prefectureText: "全国",
+      pub,
+      message,
+      level: maxLevel,
+      content, // 差分検知用（時刻を含まない）
+    };
+  }
+
+  async function runNationwideCycle(){
+    try{
+      const data = await getNationwideWarnings();
+      const card = buildNationwideCard(data);
+
+      if(!card){
+        // 警報以上の発表なし。表示はしないが、次に警報以上が現れたときに
+        // 新規更新として検知できるよう直近スナップショットをリセットする。
+        lastNationwideContent = null;
+        return;
+      }
+
+      if(card.content !== lastNationwideContent){
+        lastNationwideContent = card.content;
+        renderCard(card);
+      }
+    }catch(err){
+      console.error("[全国集約取得エラー]", err);
+    }
+  }
+
   // ===================== フィード監視・振り分け =====================
   const FUNC_TABLE = {
     vpww55: parseVpww55_56_57,
@@ -940,18 +1228,16 @@
   const state = {
     sentIds: [],
     sentSet: new Set(),
-    itemCount: 0,
     autoOn: true,
     running: false,
     timerId: null,
+    nationwideTimerId: null,
   };
 
   const el = {
     feed: document.getElementById("feed"),
     emptyState: document.getElementById("emptyState"),
     errorBanner: document.getElementById("errorBanner"),
-    itemCount: document.getElementById("itemCount"),
-    visibleCount: document.getElementById("visibleCount"),
     statusPill: document.getElementById("statusPill"),
     statusText: document.getElementById("statusText"),
     refreshBtn: document.getElementById("refreshBtn"),
@@ -977,11 +1263,6 @@
     el.statusPill.classList.toggle("live", live);
   }
 
-  function fmtNow(){
-    const d = new Date();
-    return d.toLocaleTimeString("ja-JP", { hour12: false });
-  }
-
   function proxied(url){
     return el.proxyToggle.checked ? (CORS_PROXY_PREFIX + encodeURIComponent(url)) : url;
   }
@@ -992,7 +1273,7 @@
     return await res.text();
   }
 
-  function renderCard(card, fileName){
+  function renderCard(card){
     el.emptyState.style.display = "none";
 
     const wrap = document.createElement("div");
@@ -1046,7 +1327,6 @@
     while(el.feed.children.length > MAX_VISIBLE_CARDS){
       el.feed.removeChild(el.feed.lastChild);
     }
-    el.visibleCount.textContent = el.feed.children.length;
 
     if(el.soundToggle.checked){
       el.pingSound.currentTime = 0;
@@ -1105,9 +1385,7 @@
           const fn = FUNC_TABLE[fnName];
           const card = fn(itemRoot);
           if(card){
-            state.itemCount++;
-            el.itemCount.textContent = state.itemCount;
-            renderCard(card, fileName);
+            renderCard(card);
           }
         }catch(itemErr){
           console.error("[警報処理エラー]", fnName, itemErr);
@@ -1134,9 +1412,11 @@
   function startTimer(){
     stopTimer();
     state.timerId = setInterval(runCycle, POLL_INTERVAL_MS);
+    state.nationwideTimerId = setInterval(runNationwideCycle, NATIONWIDE_POLL_INTERVAL_MS);
   }
   function stopTimer(){
     if(state.timerId){ clearInterval(state.timerId); state.timerId = null; }
+    if(state.nationwideTimerId){ clearInterval(state.nationwideTimerId); state.nationwideTimerId = null; }
   }
 
   el.autoToggle.addEventListener("change", () => {
@@ -1150,7 +1430,7 @@
     }
   });
 
-  el.refreshBtn.addEventListener("click", () => { runCycle(); });
+  el.refreshBtn.addEventListener("click", () => { runCycle(); runNationwideCycle(); });
 
   // ===================== 時計 =====================
   function tickClock(){
@@ -1165,6 +1445,7 @@
   setStatus(true, "監視中");
   startTimer();
   runCycle();
+  runNationwideCycle();
 })();
 </script>
 </body>
