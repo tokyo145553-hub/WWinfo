@@ -562,8 +562,8 @@
     </div>
     <div class="ty-tabs" id="tyTabs"></div>
     <div class="ty-body">
-      <div class="copy-wrap"><button class="copy-btn" id="tyCopyBtn" type="button">⧉ コピー</button></div>
-      <pre id="tyBodyText">台風情報を取得しています…</pre>
+      <div class="ty-feed" id="tyFeed"></div>
+      <div class="ty-empty" id="tyEmpty">台風情報を取得しています…</div>
     </div>
   </section>
 
@@ -1454,25 +1454,89 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "ty-tab" + (i === tyState.selectedIndex ? " active" : "");
-      btn.textContent = `${TYPHOON_TAB_LABELS[i]}) ${typhoonTabLabel(t)}`;
+      btn.textContent = `${typhoonTabLabel(t)}${TYPHOON_TAB_LABELS[i]}`;
       btn.addEventListener("click", () => {
         tyState.selectedIndex = i;
         renderTyphoonTabs();
-        renderTyphoonBody();
+        renderTyphoonFeed();
       });
       el.tyTabs.appendChild(btn);
     });
   }
 
-  function renderTyphoonBody(){
+  // 選択中のタブ（台風a～d）について、これまでに検知した更新をカード形式のフィードとして表示する。
+  // 地域別の気象警報フィードと同様、更新があるたびに新しいカードが積み上がっていく。
+  function renderTyphoonFeed(){
+    const history = tyState.histories[tyState.selectedIndex] || [];
+    el.tyFeed.innerHTML = "";
+
     if(tyState.entries.length === 0){
+      el.tyEmpty.style.display = "block";
+      el.tyEmpty.textContent = "現在、台風・熱帯低気圧の情報はありません。";
       el.tyTime.textContent = "現在、台風情報はありません";
-      el.tyBodyText.textContent = "現在、台風・熱帯低気圧の情報はありません。";
       return;
     }
 
-    el.tyBodyText.textContent = tyState.texts[tyState.selectedIndex];
-    el.tyTime.textContent = "最終更新: " + new Date().toLocaleString("ja-JP");
+    if(history.length === 0){
+      el.tyEmpty.style.display = "block";
+      el.tyEmpty.textContent = "情報を取得しています…";
+      el.tyTime.textContent = "取得中…";
+      return;
+    }
+
+    el.tyEmpty.style.display = "none";
+
+    history.forEach(entry => {
+      const wrap = document.createElement("div");
+      wrap.className = "card ty";
+
+      const label = `${typhoonTabLabel(entry.t)}${TYPHOON_TAB_LABELS[tyState.selectedIndex]}`;
+      const timeText = entry.time.toLocaleString("ja-JP");
+
+      wrap.innerHTML = `
+        <div class="card-head">
+          <div class="card-head-text">
+            <div class="card-kind">
+              <span class="lv-badge">台風情報</span>
+              ${escapeHtml(label)}
+            </div>
+            <div class="card-meta">
+              <span class="pref">${escapeHtml(entry.t.area || "")}</span>
+              <span class="time">${escapeHtml(timeText)} 更新</span>
+            </div>
+          </div>
+          <button class="copy-btn" type="button">⧉ コピー</button>
+        </div>
+        <div class="card-body"><pre></pre></div>
+      `;
+      wrap.querySelector(".card-body pre").textContent = entry.text;
+
+      const copyBtn = wrap.querySelector(".copy-btn");
+      copyBtn.addEventListener("click", async () => {
+        try{
+          await navigator.clipboard.writeText(entry.text);
+          copyBtn.classList.add("copied");
+          copyBtn.textContent = "✓ コピーしました";
+          setTimeout(() => {
+            copyBtn.classList.remove("copied");
+            copyBtn.textContent = "⧉ コピー";
+          }, 1600);
+        }catch(e){
+          const range = document.createRange();
+          const pre = wrap.querySelector(".card-body pre");
+          range.selectNodeContents(pre);
+          const sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          copyBtn.textContent = "選択済み（Ctrl+C）";
+          setTimeout(() => { copyBtn.textContent = "⧉ コピー"; }, 2000);
+        }
+      });
+
+      el.tyFeed.appendChild(wrap);
+    });
+
+    el.tyTime.textContent = "最終更新: " + history[0].time.toLocaleString("ja-JP");
   }
 
   async function runTyphoonCycle(){
