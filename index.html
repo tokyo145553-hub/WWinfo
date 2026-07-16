@@ -49,7 +49,6 @@
     *{ animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
   }
 
-  /* ---------- Header console ---------- */
   header{
     position: sticky;
     top: 0;
@@ -243,7 +242,6 @@
   details.settings label{ display:flex; align-items:center; gap:8px; cursor:pointer; }
   details.settings input[type=checkbox]{ accent-color: var(--accent); }
 
-  /* ---------- Body / feed ---------- */
   main{
     max-width: 920px;
     margin: 0 auto;
@@ -264,6 +262,57 @@
   }
   .banner.show{ display:block; }
   .banner a{ color: #ffd7cf; }
+
+  /* ---------- 全国サマリーパネル（常設・毎回最新状態に上書きされる） ---------- */
+  .nw-panel{
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent-dim);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .nw-panel.lv5{ border-left-color: var(--lv5-line); }
+  .nw-panel.lv4{ border-left-color: var(--lv4); }
+  .nw-panel.lv3{ border-left-color: var(--lv3); }
+  .nw-head{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--panel-alt);
+    flex-wrap: wrap;
+  }
+  .nw-title{
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 13.5px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .nw-dot{
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(45,212,191,0.6);
+    animation: pulse 1.6s ease-out infinite;
+    flex: none;
+  }
+  .nw-time{ font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
+  .nw-body{ padding: 13px 14px 15px; }
+  .nw-body pre{
+    margin: 0;
+    font-family: var(--sans);
+    font-size: 13.5px;
+    line-height: 1.85;
+    color: #d3d9ea;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 
   .empty-state{
     border: 1px dashed var(--border);
@@ -440,6 +489,14 @@
 <main>
   <div class="banner" id="errorBanner"></div>
 
+  <section class="nw-panel" id="nwPanel">
+    <div class="nw-head">
+      <div class="nw-title"><span class="nw-dot"></span>全国の気象警報（現在発表中）</div>
+      <div class="nw-time" id="nwTime">取得中…</div>
+    </div>
+    <div class="nw-body"><pre id="nwBodyText">全国の警報データを取得しています…</pre></div>
+  </section>
+
   <div class="empty-state" id="emptyState">
     <div class="big">監視中…</div>
     新しい警報・注意報の発表を待っています。<br>
@@ -486,69 +543,25 @@
     ATOM: "http://www.w3.org/2005/Atom",
   };
 
-  // 全国集約(r8)で使う地域コード対応表
   const regionCodeByName = {
-    "宗谷地方": "011000",
-    "上川・留萌地方": "012000",
-    "網走・北見・紋別地方": "013000",
-    "十勝地方": "014030",
-    "釧路・根室地方": "014100",
-    "胆振・日高地方": "015000",
-    "石狩・空知・後志地方": "016000",
-    "渡島・檜山地方": "017000",
-    "青森県": "020000",
-    "岩手県": "030000",
-    "宮城県": "040000",
-    "秋田県": "050000",
-    "山形県": "060000",
-    "福島県": "070000",
-    "茨城県": "080000",
-    "栃木県": "090000",
-    "群馬県": "100000",
-    "埼玉県": "110000",
-    "千葉県": "120000",
-    "東京都": "130000",
-    "神奈川県": "140000",
-    "新潟県": "150000",
-    "富山県": "160000",
-    "石川県": "170000",
-    "福井県": "180000",
-    "山梨県": "190000",
-    "長野県": "200000",
-    "岐阜県": "210000",
-    "静岡県": "220000",
-    "愛知県": "230000",
-    "三重県": "240000",
-    "滋賀県": "250000",
-    "京都府": "260000",
-    "大阪府": "270000",
-    "兵庫県": "280000",
-    "奈良県": "290000",
-    "和歌山県": "300000",
-    "鳥取県": "310000",
-    "島根県": "320000",
-    "岡山県": "330000",
-    "広島県": "340000",
-    "山口県": "350000",
-    "徳島県": "360000",
-    "香川県": "370000",
-    "愛媛県": "380000",
-    "高知県": "390000",
-    "福岡県": "400000",
-    "佐賀県": "410000",
-    "長崎県": "420000",
-    "熊本県": "430000",
-    "大分県": "440000",
-    "宮崎県": "450000",
-    "奄美地方（鹿児島県）": "460040",
-    "鹿児島県（奄美地方を除く）": "460100",
-    "沖縄本島地方": "471000",
-    "大東島地方": "472000",
-    "宮古島地方": "473000",
-    "八重山地方": "474000"
+    "宗谷地方": "011000", "上川・留萌地方": "012000", "網走・北見・紋別地方": "013000",
+    "十勝地方": "014030", "釧路・根室地方": "014100", "胆振・日高地方": "015000",
+    "石狩・空知・後志地方": "016000", "渡島・檜山地方": "017000",
+    "青森県": "020000", "岩手県": "030000", "宮城県": "040000", "秋田県": "050000",
+    "山形県": "060000", "福島県": "070000", "茨城県": "080000", "栃木県": "090000",
+    "群馬県": "100000", "埼玉県": "110000", "千葉県": "120000", "東京都": "130000",
+    "神奈川県": "140000", "新潟県": "150000", "富山県": "160000", "石川県": "170000",
+    "福井県": "180000", "山梨県": "190000", "長野県": "200000", "岐阜県": "210000",
+    "静岡県": "220000", "愛知県": "230000", "三重県": "240000", "滋賀県": "250000",
+    "京都府": "260000", "大阪府": "270000", "兵庫県": "280000", "奈良県": "290000",
+    "和歌山県": "300000", "鳥取県": "310000", "島根県": "320000", "岡山県": "330000",
+    "広島県": "340000", "山口県": "350000", "徳島県": "360000", "香川県": "370000",
+    "愛媛県": "380000", "高知県": "390000", "福岡県": "400000", "佐賀県": "410000",
+    "長崎県": "420000", "熊本県": "430000", "大分県": "440000", "宮崎県": "450000",
+    "奄美地方（鹿児島県）": "460040", "鹿児島県（奄美地方を除く）": "460100",
+    "沖縄本島地方": "471000", "大東島地方": "472000", "宮古島地方": "473000", "八重山地方": "474000"
   };
 
-  // 全国集約(r8)で使う警報種別コード対応表
   const NATIONWIDE_WARN_AREA = {
     "00":{name:"解除",level:null},
     "02":{name:"暴風雪警報",level:3},
@@ -610,7 +623,6 @@
   let areaDataCache = null;
   let lastNationwideContent = null; // 時刻を除いた本文の直近スナップショット（差分検知用）
 
-  // ===================== DOM helpers (namespace-aware, direct-children only) ===
   function findChild(el, ns, tag){
     if(!el) return null;
     for(const c of el.children){
@@ -646,7 +658,6 @@
     return `${month}月${day}日${hour}:${minute}`;
   }
 
-  // r8データの reportDatetime 用（オフセット込みのローカル時刻としてそのまま整形）
   function formatPubDatetimeNW(dtStr){
     const dt = new Date(dtStr || Date.now());
     if(isNaN(dt.getTime())) return "";
@@ -694,7 +705,6 @@
     return 0;
   }
 
-  // ===================== パーサー: VPWW55/56/57（大雨・土砂災害・高潮） =====================
   function parseVpww55_56_57(root){
     const head = findChild(root, NS.H, "Head");
     const control = findChild(root, NS.R, "Control");
@@ -810,7 +820,6 @@
     return { kindName, prefectureText, pub, message, level };
   }
 
-  // ===================== パーサー: VPWW58（暴風・暴風雪） =====================
   function parseVpww58(root){
     const head = findChild(root, NS.H, "Head");
 
@@ -927,7 +936,6 @@
     return { kindName, prefectureText, pub, message, level };
   }
 
-  // ===================== パーサー: VPWW59/60（波浪・大雪） =====================
   function parseVpww59_60(root){
     const head = findChild(root, NS.H, "Head");
     const control = findChild(root, NS.R, "Control");
@@ -1033,7 +1041,6 @@
     return msg.replace(/\n+$/, "");
   }
 
-  // ===================== 全国集約(r8) =====================
   function createWarnInfoTemplate(warnArea){
     const warnByTypeAndArea = {};
     for(const info of Object.values(warnArea)){
@@ -1126,7 +1133,6 @@
     return { reportDatetime, publishingOffice, warnInfo: warnByTypeAndArea };
   }
 
-  // 警報以上(NATIONWIDE_MIN_LEVEL以上)のみを整形。該当なしなら null を返す。
   function buildNationwideCard(data){
     const sortedWarnNames = [
       ...NATIONWIDE_WARN_ORDER.filter(name => data.warnInfo[name]),
@@ -1168,32 +1174,38 @@
 
     content = content.trim();
     const pub = formatPubDatetimeNW(data.reportDatetime);
-    const publishingOffice = data.publishingOffice || "気象庁";
-    const message = `《全国の気象警報》\n${pub}　更新\n\n${content}`;
 
     return {
       kindName: "全国集約",
       prefectureText: "全国",
       pub,
-      message,
+      message: `《全国の気象警報》\n${pub}　更新\n\n${content}`,
       level: maxLevel,
-      content, // 差分検知用（時刻を含まない）
+      content,
     };
   }
 
+  // 全国サマリーパネル（常設。差分の有無にかかわらず毎回最新状態へ上書きする）
+  function renderNationwideSummary(card){
+    el.nwPanel.className = "nw-panel" + (card ? ` lv${card.level}` : "");
+    el.nwTime.textContent = card ? `${card.pub} 更新` : "監視中…（現在アクティブな警報はありません）";
+    el.nwBodyText.textContent = card
+      ? card.content
+      : "現在、全国で警報・危険警報・特別警報の発表はありません。";
+  }
+
   async function runNationwideCycle(){
-    // 二重起動防止：LINEアプリ内ブラウザ等でタブがバックグラウンドから復帰した際に
-    // タイマーが詰まって短時間に何度も呼ばれても、同時に複数の取得処理が
-    // 走らないようにする（これが「開いたら何個も表示される」原因の一つ）。
     if(state.nwRunning) return;
     state.nwRunning = true;
     try{
       const data = await getNationwideWarnings();
       const card = buildNationwideCard(data);
 
+      // パネルは差分の有無にかかわらず毎回更新する。
+      // これにより、ページを開いた瞬間（初回表示）から必ず全国の現況が見える。
+      renderNationwideSummary(card);
+
       if(!card){
-        // 警報以上の発表なし。表示はしないが、次に警報以上が現れたときに
-        // 新規更新として検知できるよう直近スナップショットをリセットする。
         lastNationwideContent = null;
         return;
       }
@@ -1204,12 +1216,12 @@
       }
     }catch(err){
       console.error("[全国集約取得エラー]", err);
+      el.nwTime.textContent = "取得エラー";
     }finally{
       state.nwRunning = false;
     }
   }
 
-  // ===================== フィード監視・振り分け =====================
   const FUNC_TABLE = {
     vpww55: parseVpww55_56_57,
     vpww58: parseVpww58,
@@ -1230,7 +1242,6 @@
     return null;
   }
 
-  // ===================== 状態 =====================
   const state = {
     sentIds: [],
     sentSet: new Set(),
@@ -1254,6 +1265,9 @@
     pingSound: document.getElementById("pingSound"),
     clockTime: document.getElementById("clockTime"),
     clockDate: document.getElementById("clockDate"),
+    nwPanel: document.getElementById("nwPanel"),
+    nwTime: document.getElementById("nwTime"),
+    nwBodyText: document.getElementById("nwBodyText"),
   };
 
   function showError(msg){
@@ -1317,7 +1331,6 @@
           copyBtn.textContent = "⧉ コピー";
         }, 1600);
       }catch(e){
-        // フォールバック: 選択してコピーを促す
         const range = document.createRange();
         const pre = wrap.querySelector(".card-body pre");
         range.selectNodeContents(pre);
@@ -1371,8 +1384,6 @@
         }
       }
 
-      // フィードは新しい順に並んでいるため、逆順（古い→新しい）で処理してから
-      // それぞれを先頭に prepend することで、最終的に新しいものが一番上にくるようにする。
       const orderedTargets = targets.slice().reverse();
 
       for(const [href, fnName] of orderedTargets){
@@ -1415,7 +1426,6 @@
     }
   }
 
-  // ===================== タイマー制御 =====================
   function startTimer(){
     stopTimer();
     state.timerId = setInterval(runCycle, POLL_INTERVAL_MS);
@@ -1437,25 +1447,18 @@
     }
   });
 
-  el.refreshBtn.addEventListener("click", () => { runCycle(); runNationwideCycle(); });
+  el.refreshBtn.addEventListener("click", () => { runNationwideCycle(); runCycle(); });
 
-  // ===================== 画面の表示/非表示切り替え対応 =====================
-  // LINEアプリ内ブラウザなどで画面を折りたたむ（バックグラウンドにする）と、
-  // setIntervalが長時間ブラウザ側で止められた後にまとめて実行されることがあり、
-  // これが「開いたときに何個も一気に表示される」原因になっていた。
-  // 非表示になったら一旦タイマーを完全に止め、再表示時に1回だけ最新状態を
-  // 取得し直してからタイマーを再開することで、これを防ぐ。
   document.addEventListener("visibilitychange", () => {
     if(document.hidden){
       stopTimer();
     }else if(state.autoOn){
-      runCycle();
       runNationwideCycle();
+      runCycle();
       startTimer();
     }
   });
 
-  // ===================== 時計 =====================
   function tickClock(){
     const d = new Date();
     el.clockTime.textContent = d.toLocaleTimeString("ja-JP", { hour12: false });
@@ -1464,13 +1467,12 @@
   tickClock();
   setInterval(tickClock, 1000);
 
-  // ===================== 初期化 =====================
-  // 通常の警報フィード → 全国集約 の順に「待ってから」実行することで、
-  // 初回表示時は全国集約カードが最後にprependされ、一番上に来るようにする。
+  // 全国サマリー → 個別フィード の順で「待ってから」実行することで、
+  // ページを開いた直後は必ず全国の気象警報サマリーが最初に表示されるようにする。
   async function init(){
     setStatus(true, "監視中");
-    await runCycle();
     await runNationwideCycle();
+    await runCycle();
     startTimer();
   }
   init();
