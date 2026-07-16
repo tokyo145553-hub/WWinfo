@@ -332,29 +332,6 @@
     gap: 8px;
   }
   .ty-time{ font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
-  .ty-tabs{
-    display: flex;
-    gap: 6px;
-    padding: 12px 14px 0;
-    flex-wrap: wrap;
-  }
-  .ty-tab{
-    font-family: var(--mono);
-    font-size: 12px;
-    padding: 6px 11px;
-    border-radius: 3px;
-    border: 1px solid var(--border);
-    background: var(--panel-alt);
-    color: var(--text-dim);
-    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
-  }
-  .ty-tab:hover{ border-color: var(--accent-dim); color: var(--text); }
-  .ty-tab.active{
-    background: var(--accent);
-    color: #05221e;
-    border-color: var(--accent);
-    font-weight: 600;
-  }
   .ty-body{ padding: 13px 14px 15px; }
   .ty-feed{
     display: flex;
@@ -560,7 +537,6 @@
       <div class="ty-title"><span class="nw-dot"></span>台風情報</div>
       <div class="ty-time" id="tyTime">取得中…</div>
     </div>
-    <div class="ty-tabs" id="tyTabs"></div>
     <div class="ty-body">
       <div class="ty-feed" id="tyFeed"></div>
       <div class="ty-empty" id="tyEmpty">台風情報を取得しています…</div>
@@ -606,9 +582,8 @@
   const WARNING_R8_BASE_URL = `${JMA_BASE}/warning/data/r8`;
   const NATIONWIDE_MIN_LEVEL = 3; // 警報以上（3:警報 4:危険警報 5:特別警報）
 
-  // 台風情報：最大4件まで取得し、a)～d)のタブで選択できるようにする
+  // 台風情報：最大4件まで取得し、メッセージカードとして並べる
   const TYPHOON_MAX = 4;
-  const TYPHOON_TAB_LABELS = ["a", "b", "c", "d"];
 
   document.getElementById("feedUrlLabel").textContent = FEED_URL;
 
@@ -1436,38 +1411,19 @@
     ].join("\n");
   }
 
-  function typhoonTabLabel(t){
+  function typhoonLabel(t){
     return t.isTD ? "熱帯低気圧" : `台風${t.number}号`;
   }
 
-  function renderTyphoonTabs(){
-    el.tyTabs.innerHTML = "";
-
-    if(tyState.entries.length === 0){
-      el.tyTabs.style.display = "none";
-      return;
-    }
-
-    el.tyTabs.style.display = "flex";
-
-    tyState.entries.forEach((t, i) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "ty-tab" + (i === tyState.selectedIndex ? " active" : "");
-      btn.textContent = `${typhoonTabLabel(t)}${TYPHOON_TAB_LABELS[i]}`;
-      btn.addEventListener("click", () => {
-        tyState.selectedIndex = i;
-        renderTyphoonTabs();
-        renderTyphoonFeed();
-      });
-      el.tyTabs.appendChild(btn);
-    });
+  // 個々の台風・熱帯低気圧の識別キー（同一の台風の更新かどうかを判定するため）。
+  // 台風番号があればそれを使い、なければ名称（熱帯低気圧など）で識別する。
+  function typhoonKey(t){
+    return t.isTD ? `TD:${t.name || t.area || "unknown"}` : `TY:${t.number}`;
   }
 
-  // 選択中のタブ（台風a～d）について、これまでに検知した更新をカード形式のフィードとして表示する。
-  // 地域別の気象警報フィードと同様、更新があるたびに新しいカードが積み上がっていく。
+  // 台風情報を地域別気象警報と同じ「メッセージカード」として表示する。
+  // タブ選択は行わず、検知した台風・熱帯低気圧を空の場合を除き常時カードとして並べる。
   function renderTyphoonFeed(){
-    const history = tyState.histories[tyState.selectedIndex] || [];
     el.tyFeed.innerHTML = "";
 
     if(tyState.entries.length === 0){
@@ -1477,21 +1433,15 @@
       return;
     }
 
-    if(history.length === 0){
-      el.tyEmpty.style.display = "block";
-      el.tyEmpty.textContent = "情報を取得しています…";
-      el.tyTime.textContent = "取得中…";
-      return;
-    }
-
     el.tyEmpty.style.display = "none";
 
-    history.forEach(entry => {
+    tyState.entries.forEach(t => {
       const wrap = document.createElement("div");
       wrap.className = "card ty";
 
-      const label = `${typhoonTabLabel(entry.t)}${TYPHOON_TAB_LABELS[tyState.selectedIndex]}`;
-      const timeText = entry.time.toLocaleString("ja-JP");
+      const label = typhoonLabel(t);
+      const text = buildTyphoonText(t);
+      const timeText = tyState.updatedAt.toLocaleString("ja-JP");
 
       wrap.innerHTML = `
         <div class="card-head">
@@ -1501,7 +1451,7 @@
               ${escapeHtml(label)}
             </div>
             <div class="card-meta">
-              <span class="pref">${escapeHtml(entry.t.area || "")}</span>
+              <span class="pref">${escapeHtml(t.area || "")}</span>
               <span class="time">${escapeHtml(timeText)} 更新</span>
             </div>
           </div>
@@ -1509,12 +1459,12 @@
         </div>
         <div class="card-body"><pre></pre></div>
       `;
-      wrap.querySelector(".card-body pre").textContent = entry.text;
+      wrap.querySelector(".card-body pre").textContent = text;
 
       const copyBtn = wrap.querySelector(".copy-btn");
       copyBtn.addEventListener("click", async () => {
         try{
-          await navigator.clipboard.writeText(entry.text);
+          await navigator.clipboard.writeText(text);
           copyBtn.classList.add("copied");
           copyBtn.textContent = "✓ コピーしました";
           setTimeout(() => {
@@ -1536,45 +1486,26 @@
       el.tyFeed.appendChild(wrap);
     });
 
-    el.tyTime.textContent = "最終更新: " + history[0].time.toLocaleString("ja-JP");
+    el.tyTime.textContent = "最終更新: " + tyState.updatedAt.toLocaleString("ja-JP");
   }
-
-  const MAX_TY_HISTORY_PER_SLOT = 50;
 
   async function runTyphoonCycle(){
     if(state.tyRunning) return;
     state.tyRunning = true;
     try{
       const hrefs = await fetchTyphoonHrefs();
+      const details = hrefs.length ? await Promise.all(hrefs.map(href => fetchTyphoonDetail(href))) : [];
 
-      if(hrefs.length === 0){
-        tyState.entries = [];
-        tyState.selectedIndex = 0;
-        renderTyphoonTabs();
-        renderTyphoonFeed();
+      // 内容（件数・各台風の本文）に変化がない限り再描画は行わない。
+      // 1秒ごとのポーリングはデータ取得のみで、DOMの再構築は変化があった時だけ実行する。
+      const signature = details.map(t => `${typhoonKey(t)}::${buildTyphoonText(t)}`).sort().join("|||");
+      if(signature === tyState.lastSignature){
         return;
       }
-
-      const details = await Promise.all(hrefs.map(href => fetchTyphoonDetail(href)));
-
-      if(tyState.selectedIndex >= details.length) tyState.selectedIndex = 0;
-
+      tyState.lastSignature = signature;
       tyState.entries = details;
+      tyState.updatedAt = new Date();
 
-      // 各タブ（a～d）ごとに内容の変化を検知し、変化があった場合のみ
-      // そのタブのフィードへ新しいカードを積み上げる（地域別警報フィードと同様の方式）。
-      details.forEach((t, i) => {
-        const text = buildTyphoonText(t);
-        if(text !== tyState.lastTexts[i]){
-          tyState.lastTexts[i] = text;
-          tyState.histories[i].unshift({ text, time: new Date(), t });
-          if(tyState.histories[i].length > MAX_TY_HISTORY_PER_SLOT){
-            tyState.histories[i].length = MAX_TY_HISTORY_PER_SLOT;
-          }
-        }
-      });
-
-      renderTyphoonTabs();
       renderTyphoonFeed();
     }catch(err){
       console.error("[台風情報取得エラー]", err);
@@ -1618,9 +1549,8 @@
 
   const tyState = {
     entries: [],
-    histories: [[], [], [], []], // タブ（a～d）ごとの更新フィード履歴
-    lastTexts: ["", "", "", ""], // タブごとの直近本文（差分検知用）
-    selectedIndex: 0,
+    lastSignature: null, // 直近の内容シグネチャ（変化がなければ再描画しない）
+    updatedAt: new Date(),
   };
 
   const el = {
@@ -1639,7 +1569,6 @@
     nwPanel: document.getElementById("nwPanel"),
     nwTime: document.getElementById("nwTime"),
     nwBodyText: document.getElementById("nwBodyText"),
-    tyTabs: document.getElementById("tyTabs"),
     tyTime: document.getElementById("tyTime"),
     tyFeed: document.getElementById("tyFeed"),
     tyEmpty: document.getElementById("tyEmpty"),
