@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>気象情報モニター | TEBinfo</title>
-<meta name="description" content="最新気象情報を監視し、警報・注意報・台風情報の発表状況を表示するモニターです。">
+<meta name="description" content="最新気象情報を監視し、警報・注意報の発表状況を表示するモニターです。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -57,12 +57,17 @@
     backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
   }
-  /* 常時アニメーションしていた「動くバー」は視覚的なノイズになるため静的な装飾に変更 */
   .sweep{
     height: 2px;
     width: 100%;
     background: linear-gradient(90deg, transparent, var(--accent), transparent);
-    opacity: 0.55;
+    background-size: 200% 100%;
+    animation: sweep 2.2s linear infinite;
+    opacity: 0.75;
+  }
+  @keyframes sweep{
+    0%{ background-position: 200% 0; }
+    100%{ background-position: -200% 0; }
   }
 
   .console-inner{
@@ -126,7 +131,6 @@
     background: var(--panel);
     color: var(--text-dim);
   }
-  /* ドットの点滅アニメーションを廃止し、状態は色のみで示す（静的表示） */
   .status-pill .dot{
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--text-faint);
@@ -134,6 +138,13 @@
   }
   .status-pill.live .dot{
     background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(45,212,191,0.6);
+    animation: pulse 1.6s ease-out infinite;
+  }
+  @keyframes pulse{
+    0%{ box-shadow: 0 0 0 0 rgba(45,212,191,0.55); }
+    70%{ box-shadow: 0 0 0 7px rgba(45,212,191,0); }
+    100%{ box-shadow: 0 0 0 0 rgba(45,212,191,0); }
   }
   .status-pill.live{ color: var(--accent); border-color: var(--accent-dim); }
 
@@ -284,10 +295,11 @@
     align-items: center;
     gap: 8px;
   }
-  /* ドットは静的表示（点滅を廃止） */
   .nw-dot{
     width: 7px; height: 7px; border-radius: 50%;
     background: var(--accent);
+    box-shadow: 0 0 0 0 rgba(45,212,191,0.6);
+    animation: pulse 1.6s ease-out infinite;
     flex: none;
   }
   .nw-time{ font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
@@ -301,37 +313,6 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
-
-  /* ---------- 台風情報パネル ---------- */
-  .ty-panel{
-    position: relative;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-left: 4px solid var(--accent-dim);
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 20px;
-  }
-  .ty-head{
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 12px 14px 10px;
-    border-bottom: 1px solid var(--border-soft);
-    background: var(--panel-alt);
-    flex-wrap: wrap;
-  }
-  .ty-title{
-    font-family: var(--mono);
-    font-weight: 700;
-    font-size: 13.5px;
-    color: var(--text);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .ty-time{ font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
 
   .empty-state{
     border: 1px dashed var(--border);
@@ -365,8 +346,6 @@
   .card.lv3{ border-left-color: var(--lv3); }
   .card.lv2{ border-left-color: var(--downgrade); }
   .card.lv1{ border-left-color: var(--lift); }
-  .card.ty{ border-left-color: var(--accent); }
-  .card.ty .lv-badge{ background: var(--accent); color: #05221e; }
 
   @keyframes enter{
     from{ opacity: 0; transform: translateY(-6px); }
@@ -518,13 +497,6 @@
     <div class="nw-body"><pre id="nwBodyText">全国の警報データを取得しています…</pre></div>
   </section>
 
-  <section class="ty-panel" id="tyPanel">
-    <div class="ty-head">
-      <div class="ty-title"><span class="nw-dot"></span>台風情報</div>
-      <div class="ty-time" id="tyTime">監視中…</div>
-    </div>
-  </section>
-
   <div class="empty-state" id="emptyState">
     <div class="big">監視中…</div>
     新しい警報・注意報の発表を待っています。<br>
@@ -537,7 +509,6 @@
 <footer>
   <div>データ出典: 気象庁防災情報XML（<span class="src-line" id="feedUrlLabel"></span>）</div>
   <div>全国集約データ: <span class="src-line" id="nationwideUrlLabel"></span></div>
-  <div>台風情報: 上記の気象庁防災情報XMLフィード内の台風実況・予報エントリを利用しています。</div>
   <div>このページは気象庁の公式サービスではありません。避難行動の判断は必ず気象庁・自治体の公式発表を確認してください。</div>
 </footer>
 
@@ -553,7 +524,6 @@
   const FEED_URL = "https://www.data.jma.go.jp/developer/xml/feed/extra.xml";
   const POLL_INTERVAL_MS = 1000;
   const NATIONWIDE_POLL_INTERVAL_MS = 1000;
-  const TYPHOON_POLL_INTERVAL_MS = 1000;
   const MAX_TARGETS_PER_CYCLE = 15;
   const MAX_SENT_IDS = 300;
   const MAX_VISIBLE_CARDS = 150;
@@ -563,9 +533,6 @@
   const AREA_JSON_URL = `${JMA_BASE}/common/const/area.json`;
   const WARNING_R8_BASE_URL = `${JMA_BASE}/warning/data/r8`;
   const NATIONWIDE_MIN_LEVEL = 3; // 警報以上（3:警報 4:危険警報 5:特別警報）
-
-  // 台風情報：最大4件まで取得し、メッセージカードとして並べる
-  const TYPHOON_MAX = 4;
 
   document.getElementById("feedUrlLabel").textContent = FEED_URL;
 
@@ -1255,248 +1222,6 @@
     }
   }
 
-  // ===================== 台風情報 =====================
-
-  async function fetchTyphoonHrefs(){
-    const feedText = await fetchText(FEED_URL);
-    const parser = new DOMParser();
-    const feedXml = parser.parseFromString(feedText, "text/xml");
-    const entries = [...feedXml.getElementsByTagName("entry")];
-
-    const hrefs = [];
-    const seen = new Set();
-
-    // 第1パス: 実況
-    for(const entry of entries){
-      if(hrefs.length >= TYPHOON_MAX) break;
-      const title = entry.getElementsByTagName("title")[0]?.textContent || "";
-      const link = entry.getElementsByTagName("link")[0]?.getAttribute("href");
-      if(title.includes("台風") && title.includes("実況") && link && !seen.has(link)){
-        seen.add(link);
-        hrefs.push(link);
-      }
-    }
-
-    // 第2パス: 予報
-    if(hrefs.length < TYPHOON_MAX){
-      for(const entry of entries){
-        if(hrefs.length >= TYPHOON_MAX) break;
-        const title = entry.getElementsByTagName("title")[0]?.textContent || "";
-        const link = entry.getElementsByTagName("link")[0]?.getAttribute("href");
-        if(title.includes("台風") && title.includes("予報") && link && !seen.has(link)){
-          seen.add(link);
-          hrefs.push(link);
-        }
-      }
-    }
-
-    return hrefs;
-  }
-
-  async function fetchTyphoonDetail(href){
-    const detailText = await fetchText(href);
-    const parser = new DOMParser();
-    const detailXml = parser.parseFromString(detailText, "text/xml");
-
-    let number = null;
-    let isTD = false; // 台風番号または台風名が確認できない場合は熱帯低気圧として扱う
-    let name = "不明";
-    let size = "--";
-    let intensity = "--";
-    let pressure = "不明";
-    let wind = "―";
-    let gust = "―";
-    let direction = "不明";
-    let speedText = "不明";
-    let area = "不明";
-
-    const numberNode = detailXml.querySelector("Number");
-    if(numberNode){
-      const raw = numberNode.textContent || "";
-      const parsed = parseInt(raw.slice(-2), 10);
-      if(isNaN(parsed)){
-        isTD = true;
-      }else{
-        number = parsed;
-      }
-    }else{
-      isTD = true;
-    }
-
-    const nameNode = detailXml.querySelector("Name");
-    if(nameNode && nameNode.textContent && nameNode.textContent.trim() !== ""){
-      name = nameNode.textContent.trim();
-    }else{
-      isTD = true;
-    }
-
-    const info = detailXml.querySelector("MeteorologicalInfo");
-
-    if(info){
-
-      const areaClass = info.querySelector("AreaClass");
-      if(areaClass?.textContent) size = areaClass.textContent;
-
-      const intensityClass = info.querySelector("IntensityClass");
-      if(intensityClass?.textContent) intensity = intensityClass.textContent;
-
-      const location = info.querySelector("CenterPart Location");
-      if(location?.textContent) area = location.textContent;
-
-      const pressureNode = info.querySelector("Pressure");
-      if(pressureNode?.textContent) pressure = pressureNode.textContent;
-
-      const directionNode = info.querySelector("Direction");
-      if(directionNode?.textContent) direction = directionNode.textContent;
-
-      const speedNode = [...info.querySelectorAll("Speed")].find(x => x.getAttribute("unit") === "km/h");
-      if(speedNode){
-        const speed = speedNode.textContent;
-        const desc = speedNode.getAttribute("description");
-        if(desc?.includes("ゆっくり")){
-          speedText = "ゆっくり";
-        }else if(desc?.includes("ほとんど停滞")){
-          speedText = "ほとんど停滞";
-        }else{
-          speedText = speed + " km/h";
-        }
-      }
-
-      const windNodes = [...info.querySelectorAll("WindSpeed")];
-      windNodes.forEach(node => {
-        const unit = node.getAttribute("unit");
-        const type = node.getAttribute("type") || "";
-        if(unit === "m/s" && (!type || type.includes("最大風速"))) wind = node.textContent;
-        if(unit === "m/s" && type.includes("最大瞬間風速")) gust = node.textContent;
-      });
-    }
-
-    return { number, isTD, name, size, intensity, pressure, wind, gust, direction, speedText, area };
-  }
-
-  function buildTyphoonText(t){
-    const headerLines = t.isTD
-      ? ["熱帯低気圧"]
-      : [`台風${t.number}号`, `台風名　${t.name}`];
-
-    return [
-      "【台風情報】",
-      ...headerLines,
-      `大きさ　${t.size}`,
-      `強さ　${t.intensity}`,
-      `存在地域　${t.area}`,
-      `中心気圧　${t.pressure} hPa`,
-      `最大風速　${t.wind} m/s`,
-      `最大瞬間風速　${t.gust} m/s`,
-      `移動方向　${t.direction}`,
-      `移動速度　${t.speedText}`
-    ].join("\n");
-  }
-
-  function typhoonLabel(t){
-    return t.isTD ? "熱帯低気圧" : `台風${t.number}号`;
-  }
-
-  // 個々の台風・熱帯低気圧の識別キー（同一の台風の更新かどうかを判定するため）。
-  // 台風番号があればそれを使い、なければ名称（熱帯低気圧など）で識別する。
-  function typhoonKey(t){
-    return t.isTD ? `TD:${t.name || t.area || "unknown"}` : `TY:${t.number}`;
-  }
-
-  // 台風情報のカードを、地域別気象警報と同じ「メッセージカード」として
-  // 共通のフィード（#feed）へ差し込む。これにより、台風情報より新しい気象警報が
-  // 発表されればその警報が上に、なければ台風情報が上にくる（発表順＝新着順で並ぶ）。
-  function renderTyphoonCard(t){
-    el.emptyState.style.display = "none";
-
-    const wrap = document.createElement("div");
-    wrap.className = "card ty";
-
-    const label = typhoonLabel(t);
-    const text = buildTyphoonText(t);
-    const timeText = new Date().toLocaleString("ja-JP");
-
-    wrap.innerHTML = `
-      <div class="card-head">
-        <div class="card-head-text">
-          <div class="card-kind">
-            <span class="lv-badge">台風情報</span>
-            ${escapeHtml(label)}
-          </div>
-          <div class="card-meta">
-            <span class="pref">${escapeHtml(t.area || "")}</span>
-            <span class="time">${escapeHtml(timeText)} 更新</span>
-          </div>
-        </div>
-        <button class="copy-btn" type="button">⧉ コピー</button>
-      </div>
-      <div class="card-body"><pre></pre></div>
-    `;
-    wrap.querySelector(".card-body pre").textContent = text;
-
-    const copyBtn = wrap.querySelector(".copy-btn");
-    copyBtn.addEventListener("click", async () => {
-      try{
-        await navigator.clipboard.writeText(text);
-        copyBtn.classList.add("copied");
-        copyBtn.textContent = "✓ コピーしました";
-        setTimeout(() => {
-          copyBtn.classList.remove("copied");
-          copyBtn.textContent = "⧉ コピー";
-        }, 1600);
-      }catch(e){
-        const range = document.createRange();
-        const pre = wrap.querySelector(".card-body pre");
-        range.selectNodeContents(pre);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-        copyBtn.textContent = "選択済み（Ctrl+C）";
-        setTimeout(() => { copyBtn.textContent = "⧉ コピー"; }, 2000);
-      }
-    });
-
-    el.feed.prepend(wrap);
-
-    while(el.feed.children.length > MAX_VISIBLE_CARDS){
-      el.feed.removeChild(el.feed.lastChild);
-    }
-
-    if(el.soundToggle.checked){
-      el.pingSound.currentTime = 0;
-      el.pingSound.play().catch(() => {});
-    }
-  }
-
-  async function runTyphoonCycle(){
-    if(state.tyRunning) return;
-    state.tyRunning = true;
-    try{
-      const hrefs = await fetchTyphoonHrefs();
-      const details = hrefs.length ? await Promise.all(hrefs.map(href => fetchTyphoonDetail(href))) : [];
-
-      // 台風ごとに内容の変化を検知し、変化があったものだけを新しいカードとして
-      // 共通フィードに差し込む（毎秒の再描画は行わない）。
-      for(const t of details){
-        const key = typhoonKey(t);
-        const text = buildTyphoonText(t);
-        if(tyState.lastByKey.get(key) !== text){
-          tyState.lastByKey.set(key, text);
-          renderTyphoonCard(t);
-        }
-      }
-
-      el.tyTime.textContent = details.length
-        ? "監視中"
-        : "現在、台風情報はありません";
-    }catch(err){
-      console.error("[台風情報取得エラー]", err);
-      el.tyTime.textContent = "取得エラー";
-    }finally{
-      state.tyRunning = false;
-    }
-  }
-
   const FUNC_TABLE = {
     vpww55: parseVpww55_56_57,
     vpww58: parseVpww58,
@@ -1523,14 +1248,8 @@
     autoOn: true,
     running: false,
     nwRunning: false,
-    tyRunning: false,
     timerId: null,
     nationwideTimerId: null,
-    tyTimerId: null,
-  };
-
-  const tyState = {
-    lastByKey: new Map(), // 台風ごとの直近本文（差分検知用。変化がない限り再描画しない）
   };
 
   const el = {
@@ -1549,7 +1268,6 @@
     nwPanel: document.getElementById("nwPanel"),
     nwTime: document.getElementById("nwTime"),
     nwBodyText: document.getElementById("nwBodyText"),
-    tyTime: document.getElementById("tyTime"),
   };
 
   function showError(msg){
@@ -1646,6 +1364,7 @@
     if(state.running) return;
     state.running = true;
     el.refreshBtn.classList.add("spinning");
+    setStatus(true, "確認中…");
 
     try{
       const feedText = await fetchText(FEED_URL);
@@ -1711,12 +1430,10 @@
     stopTimer();
     state.timerId = setInterval(runCycle, POLL_INTERVAL_MS);
     state.nationwideTimerId = setInterval(runNationwideCycle, NATIONWIDE_POLL_INTERVAL_MS);
-    state.tyTimerId = setInterval(runTyphoonCycle, TYPHOON_POLL_INTERVAL_MS);
   }
   function stopTimer(){
     if(state.timerId){ clearInterval(state.timerId); state.timerId = null; }
     if(state.nationwideTimerId){ clearInterval(state.nationwideTimerId); state.nationwideTimerId = null; }
-    if(state.tyTimerId){ clearInterval(state.tyTimerId); state.tyTimerId = null; }
   }
 
   el.autoToggle.addEventListener("change", () => {
@@ -1730,14 +1447,13 @@
     }
   });
 
-  el.refreshBtn.addEventListener("click", () => { runNationwideCycle(); runTyphoonCycle(); runCycle(); });
+  el.refreshBtn.addEventListener("click", () => { runNationwideCycle(); runCycle(); });
 
   document.addEventListener("visibilitychange", () => {
     if(document.hidden){
       stopTimer();
     }else if(state.autoOn){
       runNationwideCycle();
-      runTyphoonCycle();
       runCycle();
       startTimer();
     }
@@ -1751,11 +1467,11 @@
   tickClock();
   setInterval(tickClock, 1000);
 
-  // 全国サマリー・台風情報 → 個別フィード の順で「待ってから」実行することで、
-  // ページを開いた直後は必ず全国の気象警報サマリーと台風情報が最初に表示されるようにする。
+  // 全国サマリー → 個別フィード の順で「待ってから」実行することで、
+  // ページを開いた直後は必ず全国の気象警報サマリーが最初に表示されるようにする。
   async function init(){
     setStatus(true, "監視中");
-    await Promise.all([runNationwideCycle(), runTyphoonCycle()]);
+    await runNationwideCycle();
     await runCycle();
     startTimer();
   }
