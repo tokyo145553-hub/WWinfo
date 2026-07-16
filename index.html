@@ -388,6 +388,7 @@
     line-height: 1.8;
   }
   footer a{ color: var(--text-dim); }
+  footer .src-line{ word-break: break-all; }
 
   @media (max-width: 560px){
     .console-inner{ padding: 14px 14px 12px; }
@@ -430,7 +431,7 @@
       <summary>詳細設定</summary>
       <div class="settings-body">
         <label><input type="checkbox" id="proxyToggle"> CORSプロキシを経由して取得する（直接取得がブロックされる場合に使用）</label>
-        <label><input type="checkbox" id="soundToggle"> 新規警報の受信時に通知音を鳴らす</labe>
+        <label><input type="checkbox" id="soundToggle"> 新規警報の受信時に通知音を鳴らす</label>
       </div>
     </details>
   </div>
@@ -449,7 +450,8 @@
 </main>
 
 <footer>
-  <div>データ出典: 気象庁防災情報XML（extra.xml フィード）／気象庁 警報・注意報 地域別データ（r8）</div>
+  <div>データ出典: 気象庁防災情報XML（<span class="src-line" id="feedUrlLabel"></span>）</div>
+  <div>全国集約データ: <span class="src-line" id="nationwideUrlLabel"></span></div>
   <div>このページは気象庁の公式サービスではありません。避難行動の判断は必ず気象庁・自治体の公式発表を確認してください。</div>
 </footer>
 
@@ -1180,6 +1182,11 @@
   }
 
   async function runNationwideCycle(){
+    // 二重起動防止：LINEアプリ内ブラウザ等でタブがバックグラウンドから復帰した際に
+    // タイマーが詰まって短時間に何度も呼ばれても、同時に複数の取得処理が
+    // 走らないようにする（これが「開いたら何個も表示される」原因の一つ）。
+    if(state.nwRunning) return;
+    state.nwRunning = true;
     try{
       const data = await getNationwideWarnings();
       const card = buildNationwideCard(data);
@@ -1197,6 +1204,8 @@
       }
     }catch(err){
       console.error("[全国集約取得エラー]", err);
+    }finally{
+      state.nwRunning = false;
     }
   }
 
@@ -1227,6 +1236,7 @@
     sentSet: new Set(),
     autoOn: true,
     running: false,
+    nwRunning: false,
     timerId: null,
     nationwideTimerId: null,
   };
@@ -1419,7 +1429,7 @@
   el.autoToggle.addEventListener("change", () => {
     state.autoOn = el.autoToggle.checked;
     if(state.autoOn){
-      startTimer();
+      if(!document.hidden) startTimer();
       setStatus(true, "監視中");
     }else{
       stopTimer();
@@ -1428,6 +1438,22 @@
   });
 
   el.refreshBtn.addEventListener("click", () => { runCycle(); runNationwideCycle(); });
+
+  // ===================== 画面の表示/非表示切り替え対応 =====================
+  // LINEアプリ内ブラウザなどで画面を折りたたむ（バックグラウンドにする）と、
+  // setIntervalが長時間ブラウザ側で止められた後にまとめて実行されることがあり、
+  // これが「開いたときに何個も一気に表示される」原因になっていた。
+  // 非表示になったら一旦タイマーを完全に止め、再表示時に1回だけ最新状態を
+  // 取得し直してからタイマーを再開することで、これを防ぐ。
+  document.addEventListener("visibilitychange", () => {
+    if(document.hidden){
+      stopTimer();
+    }else if(state.autoOn){
+      runCycle();
+      runNationwideCycle();
+      startTimer();
+    }
+  });
 
   // ===================== 時計 =====================
   function tickClock(){
@@ -1439,10 +1465,15 @@
   setInterval(tickClock, 1000);
 
   // ===================== 初期化 =====================
-  setStatus(true, "監視中");
-  startTimer();
-  runCycle();
-  runNationwideCycle();
+  // 通常の警報フィード → 全国集約 の順に「待ってから」実行することで、
+  // 初回表示時は全国集約カードが最後にprependされ、一番上に来るようにする。
+  async function init(){
+    setStatus(true, "監視中");
+    await runCycle();
+    await runNationwideCycle();
+    startTimer();
+  }
+  init();
 })();
 </script>
 </body>
