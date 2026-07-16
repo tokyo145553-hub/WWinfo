@@ -1170,7 +1170,7 @@
     content = content.trim();
     const pub = formatPubDatetimeNW(data.reportDatetime);
     const publishingOffice = data.publishingOffice || "気象庁";
-    const message = `《全国の気象警報》\n${pub} ${publishingOffice}発表\n\n${content}`;
+    const message = `《全国の気象警報》\n${pub}　更新\n\n${content}`;
 
     return {
       kindName: "全国集約",
@@ -1279,7 +1279,7 @@
     const wrap = document.createElement("div");
     wrap.className = `card lv${card.level}`;
 
-    const badgeLabel = ["解除等", "解除等", "注意報格下げ", "警報", "危険警報", "特別警報"][card.level] || "情報";
+    const badgeLabel = ["解除等", "解除等", "注意報引き下げ", "警報", "危険警報", "特別警報"][card.level] || "情報";
 
     wrap.innerHTML = `
       <div class="card-head">
