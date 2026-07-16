@@ -1539,6 +1539,8 @@
     el.tyTime.textContent = "最終更新: " + history[0].time.toLocaleString("ja-JP");
   }
 
+  const MAX_TY_HISTORY_PER_SLOT = 50;
+
   async function runTyphoonCycle(){
     if(state.tyRunning) return;
     state.tyRunning = true;
@@ -1547,10 +1549,9 @@
 
       if(hrefs.length === 0){
         tyState.entries = [];
-        tyState.texts = [];
         tyState.selectedIndex = 0;
         renderTyphoonTabs();
-        renderTyphoonBody();
+        renderTyphoonFeed();
         return;
       }
 
@@ -1559,10 +1560,22 @@
       if(tyState.selectedIndex >= details.length) tyState.selectedIndex = 0;
 
       tyState.entries = details;
-      tyState.texts = details.map(buildTyphoonText);
+
+      // 各タブ（a～d）ごとに内容の変化を検知し、変化があった場合のみ
+      // そのタブのフィードへ新しいカードを積み上げる（地域別警報フィードと同様の方式）。
+      details.forEach((t, i) => {
+        const text = buildTyphoonText(t);
+        if(text !== tyState.lastTexts[i]){
+          tyState.lastTexts[i] = text;
+          tyState.histories[i].unshift({ text, time: new Date(), t });
+          if(tyState.histories[i].length > MAX_TY_HISTORY_PER_SLOT){
+            tyState.histories[i].length = MAX_TY_HISTORY_PER_SLOT;
+          }
+        }
+      });
 
       renderTyphoonTabs();
-      renderTyphoonBody();
+      renderTyphoonFeed();
     }catch(err){
       console.error("[台風情報取得エラー]", err);
       el.tyTime.textContent = "取得エラー";
@@ -1605,7 +1618,8 @@
 
   const tyState = {
     entries: [],
-    texts: [],
+    histories: [[], [], [], []], // タブ（a～d）ごとの更新フィード履歴
+    lastTexts: ["", "", "", ""], // タブごとの直近本文（差分検知用）
     selectedIndex: 0,
   };
 
@@ -1627,25 +1641,9 @@
     nwBodyText: document.getElementById("nwBodyText"),
     tyTabs: document.getElementById("tyTabs"),
     tyTime: document.getElementById("tyTime"),
-    tyBodyText: document.getElementById("tyBodyText"),
-    tyCopyBtn: document.getElementById("tyCopyBtn"),
+    tyFeed: document.getElementById("tyFeed"),
+    tyEmpty: document.getElementById("tyEmpty"),
   };
-
-  el.tyCopyBtn.addEventListener("click", async () => {
-    if(tyState.entries.length === 0) return;
-    const text = tyState.texts[tyState.selectedIndex];
-    try{
-      await navigator.clipboard.writeText(text);
-      el.tyCopyBtn.classList.add("copied");
-      el.tyCopyBtn.textContent = "✓ コピーしました";
-      setTimeout(() => {
-        el.tyCopyBtn.classList.remove("copied");
-        el.tyCopyBtn.textContent = "⧉ コピー";
-      }, 1600);
-    }catch(e){
-      alert("コピーに失敗しました");
-    }
-  });
 
   function showError(msg){
     el.errorBanner.innerHTML = msg;
