@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>気象警報モニター | JMA Feed Watch</title>
-<meta name="description" content="気象庁XML電文フィードを1秒間隔で監視し、警報・注意報の発表状況を表示するモニターです。">
+<title>気象情報モニター | TEBinfo</title>
+<meta name="description" content="最新気象情報を監視し、警報・注意報の発表状況を表示するモニターです。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -443,8 +443,6 @@
       <button class="btn primary" id="refreshBtn">
         <span class="ico">⟳</span> 今すぐ更新
       </button>
-
-      <span class="status-pill" id="lastCheckPill"><span class="dot" style="background:var(--text-faint)"></span>最終確認: —</span>
     </div>
 
     <details class="settings">
@@ -462,7 +460,6 @@
   <div class="banner" id="errorBanner"></div>
 
   <div class="stat-row">
-    <span class="stat">巡回回数 <b id="cycleCount">0</b></span>
     <span class="stat">受信件数 <b id="itemCount">0</b></span>
     <span class="stat">表示中 <b id="visibleCount">0</b></span>
   </div>
@@ -914,8 +911,8 @@
     let msg = `《気象警報（${kindName}）》\n${prefectureText}\n${pub} 発表`;
     if(headlineText) msg += `\n\n${headlineText}`;
     if(notice) msg += `\n${notice}`;
-    msg += `\n\n${out}出典：気象庁XML`;
-    return msg;
+    msg += `\n\n${out}`;
+    return msg.replace(/\n+$/, "");
   }
 
   // ===================== フィード監視・振り分け =====================
@@ -943,7 +940,6 @@
   const state = {
     sentIds: [],
     sentSet: new Set(),
-    cycleCount: 0,
     itemCount: 0,
     autoOn: true,
     running: false,
@@ -954,12 +950,10 @@
     feed: document.getElementById("feed"),
     emptyState: document.getElementById("emptyState"),
     errorBanner: document.getElementById("errorBanner"),
-    cycleCount: document.getElementById("cycleCount"),
     itemCount: document.getElementById("itemCount"),
     visibleCount: document.getElementById("visibleCount"),
     statusPill: document.getElementById("statusPill"),
     statusText: document.getElementById("statusText"),
-    lastCheckPill: document.getElementById("lastCheckPill"),
     refreshBtn: document.getElementById("refreshBtn"),
     autoToggle: document.getElementById("autoToggle"),
     proxyToggle: document.getElementById("proxyToggle"),
@@ -1090,7 +1084,11 @@
         }
       }
 
-      for(const [href, fnName] of targets){
+      // フィードは新しい順に並んでいるため、逆順（古い→新しい）で処理してから
+      // それぞれを先頭に prepend することで、最終的に新しいものが一番上にくるようにする。
+      const orderedTargets = targets.slice().reverse();
+
+      for(const [href, fnName] of orderedTargets){
         const fileName = href.replace(/\/$/, "").split("/").pop();
         if(state.sentSet.has(fileName)) continue;
 
@@ -1117,9 +1115,6 @@
       }
 
       clearError();
-      state.cycleCount++;
-      el.cycleCount.textContent = state.cycleCount;
-      el.lastCheckPill.querySelector("span:last-child").textContent = "最終確認: " + fmtNow();
       setStatus(state.autoOn, state.autoOn ? "監視中" : "手動モード");
     }catch(err){
       console.error("[フィード取得エラー]", err);
