@@ -332,20 +332,6 @@
     gap: 8px;
   }
   .ty-time{ font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
-  .ty-body{ padding: 13px 14px 15px; }
-  .ty-feed{
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .ty-empty{
-    display: none;
-    font-family: var(--mono);
-    font-size: 12.5px;
-    color: var(--text-faint);
-    text-align: center;
-    padding: 20px 4px;
-  }
 
   .empty-state{
     border: 1px dashed var(--border);
@@ -535,11 +521,7 @@
   <section class="ty-panel" id="tyPanel">
     <div class="ty-head">
       <div class="ty-title"><span class="nw-dot"></span>台風情報</div>
-      <div class="ty-time" id="tyTime">取得中…</div>
-    </div>
-    <div class="ty-body">
-      <div class="ty-feed" id="tyFeed"></div>
-      <div class="ty-empty" id="tyEmpty">台風情報を取得しています…</div>
+      <div class="ty-time" id="tyTime">監視中…</div>
     </div>
   </section>
 
@@ -1421,72 +1403,69 @@
     return t.isTD ? `TD:${t.name || t.area || "unknown"}` : `TY:${t.number}`;
   }
 
-  // 台風情報を地域別気象警報と同じ「メッセージカード」として表示する。
-  // タブ選択は行わず、検知した台風・熱帯低気圧を空の場合を除き常時カードとして並べる。
-  function renderTyphoonFeed(){
-    el.tyFeed.innerHTML = "";
+  // 台風情報のカードを、地域別気象警報と同じ「メッセージカード」として
+  // 共通のフィード（#feed）へ差し込む。これにより、台風情報より新しい気象警報が
+  // 発表されればその警報が上に、なければ台風情報が上にくる（発表順＝新着順で並ぶ）。
+  function renderTyphoonCard(t){
+    el.emptyState.style.display = "none";
 
-    if(tyState.entries.length === 0){
-      el.tyEmpty.style.display = "block";
-      el.tyEmpty.textContent = "現在、台風・熱帯低気圧の情報はありません。";
-      el.tyTime.textContent = "現在、台風情報はありません";
-      return;
-    }
+    const wrap = document.createElement("div");
+    wrap.className = "card ty";
 
-    el.tyEmpty.style.display = "none";
+    const label = typhoonLabel(t);
+    const text = buildTyphoonText(t);
+    const timeText = new Date().toLocaleString("ja-JP");
 
-    tyState.entries.forEach(t => {
-      const wrap = document.createElement("div");
-      wrap.className = "card ty";
-
-      const label = typhoonLabel(t);
-      const text = buildTyphoonText(t);
-      const timeText = tyState.updatedAt.toLocaleString("ja-JP");
-
-      wrap.innerHTML = `
-        <div class="card-head">
-          <div class="card-head-text">
-            <div class="card-kind">
-              <span class="lv-badge">台風情報</span>
-              ${escapeHtml(label)}
-            </div>
-            <div class="card-meta">
-              <span class="pref">${escapeHtml(t.area || "")}</span>
-              <span class="time">${escapeHtml(timeText)} 更新</span>
-            </div>
+    wrap.innerHTML = `
+      <div class="card-head">
+        <div class="card-head-text">
+          <div class="card-kind">
+            <span class="lv-badge">台風情報</span>
+            ${escapeHtml(label)}
           </div>
-          <button class="copy-btn" type="button">⧉ コピー</button>
+          <div class="card-meta">
+            <span class="pref">${escapeHtml(t.area || "")}</span>
+            <span class="time">${escapeHtml(timeText)} 更新</span>
+          </div>
         </div>
-        <div class="card-body"><pre></pre></div>
-      `;
-      wrap.querySelector(".card-body pre").textContent = text;
+        <button class="copy-btn" type="button">⧉ コピー</button>
+      </div>
+      <div class="card-body"><pre></pre></div>
+    `;
+    wrap.querySelector(".card-body pre").textContent = text;
 
-      const copyBtn = wrap.querySelector(".copy-btn");
-      copyBtn.addEventListener("click", async () => {
-        try{
-          await navigator.clipboard.writeText(text);
-          copyBtn.classList.add("copied");
-          copyBtn.textContent = "✓ コピーしました";
-          setTimeout(() => {
-            copyBtn.classList.remove("copied");
-            copyBtn.textContent = "⧉ コピー";
-          }, 1600);
-        }catch(e){
-          const range = document.createRange();
-          const pre = wrap.querySelector(".card-body pre");
-          range.selectNodeContents(pre);
-          const sel = window.getSelection();
-          sel.removeAllRanges();
-          sel.addRange(range);
-          copyBtn.textContent = "選択済み（Ctrl+C）";
-          setTimeout(() => { copyBtn.textContent = "⧉ コピー"; }, 2000);
-        }
-      });
-
-      el.tyFeed.appendChild(wrap);
+    const copyBtn = wrap.querySelector(".copy-btn");
+    copyBtn.addEventListener("click", async () => {
+      try{
+        await navigator.clipboard.writeText(text);
+        copyBtn.classList.add("copied");
+        copyBtn.textContent = "✓ コピーしました";
+        setTimeout(() => {
+          copyBtn.classList.remove("copied");
+          copyBtn.textContent = "⧉ コピー";
+        }, 1600);
+      }catch(e){
+        const range = document.createRange();
+        const pre = wrap.querySelector(".card-body pre");
+        range.selectNodeContents(pre);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        copyBtn.textContent = "選択済み（Ctrl+C）";
+        setTimeout(() => { copyBtn.textContent = "⧉ コピー"; }, 2000);
+      }
     });
 
-    el.tyTime.textContent = "最終更新: " + tyState.updatedAt.toLocaleString("ja-JP");
+    el.feed.prepend(wrap);
+
+    while(el.feed.children.length > MAX_VISIBLE_CARDS){
+      el.feed.removeChild(el.feed.lastChild);
+    }
+
+    if(el.soundToggle.checked){
+      el.pingSound.currentTime = 0;
+      el.pingSound.play().catch(() => {});
+    }
   }
 
   async function runTyphoonCycle(){
@@ -1496,17 +1475,20 @@
       const hrefs = await fetchTyphoonHrefs();
       const details = hrefs.length ? await Promise.all(hrefs.map(href => fetchTyphoonDetail(href))) : [];
 
-      // 内容（件数・各台風の本文）に変化がない限り再描画は行わない。
-      // 1秒ごとのポーリングはデータ取得のみで、DOMの再構築は変化があった時だけ実行する。
-      const signature = details.map(t => `${typhoonKey(t)}::${buildTyphoonText(t)}`).sort().join("|||");
-      if(signature === tyState.lastSignature){
-        return;
+      // 台風ごとに内容の変化を検知し、変化があったものだけを新しいカードとして
+      // 共通フィードに差し込む（毎秒の再描画は行わない）。
+      for(const t of details){
+        const key = typhoonKey(t);
+        const text = buildTyphoonText(t);
+        if(tyState.lastByKey.get(key) !== text){
+          tyState.lastByKey.set(key, text);
+          renderTyphoonCard(t);
+        }
       }
-      tyState.lastSignature = signature;
-      tyState.entries = details;
-      tyState.updatedAt = new Date();
 
-      renderTyphoonFeed();
+      el.tyTime.textContent = details.length
+        ? "監視中"
+        : "現在、台風情報はありません";
     }catch(err){
       console.error("[台風情報取得エラー]", err);
       el.tyTime.textContent = "取得エラー";
@@ -1548,9 +1530,7 @@
   };
 
   const tyState = {
-    entries: [],
-    lastSignature: null, // 直近の内容シグネチャ（変化がなければ再描画しない）
-    updatedAt: new Date(),
+    lastByKey: new Map(), // 台風ごとの直近本文（差分検知用。変化がない限り再描画しない）
   };
 
   const el = {
@@ -1570,8 +1550,6 @@
     nwTime: document.getElementById("nwTime"),
     nwBodyText: document.getElementById("nwBodyText"),
     tyTime: document.getElementById("tyTime"),
-    tyFeed: document.getElementById("tyFeed"),
-    tyEmpty: document.getElementById("tyEmpty"),
   };
 
   function showError(msg){
