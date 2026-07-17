@@ -263,6 +263,7 @@
   .banner.show{ display:block; }
   .banner a{ color: #ffd7cf; }
 
+  /* ---------- 全国サマリーパネル（常設・毎回最新状態に上書きされる） ---------- */
   .nw-panel{
     position: relative;
     background: var(--panel);
@@ -302,6 +303,11 @@
     flex: none;
   }
   .nw-time{ font-family: var(--mono); font-size: 11.5px; color: var(--text-dim); }
+  .nw-head-right{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
   .nw-body{ padding: 13px 14px 15px; }
   .nw-body pre{
     margin: 0;
@@ -399,7 +405,7 @@
 
   .copy-btn{
     flex: none;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 6px;
     font-size: 11.5px;
@@ -491,7 +497,7 @@
   <section class="nw-panel" id="nwPanel">
     <div class="nw-head">
       <div class="nw-title"><span class="nw-dot"></span>全国の気象警報（現在発表中）</div>
-      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+      <div class="nw-head-right">
         <div class="nw-time" id="nwTime">取得中…</div>
         <button class="copy-btn" id="nwCopyBtn" type="button">⧉ コピー</button>
       </div>
@@ -623,8 +629,7 @@
     `${WARNING_R8_BASE_URL}/{regionCode}.json（全国${Object.keys(regionCodeByName).length}地域を集約）`;
 
   let areaDataCache = null;
-  let lastNationwideContent = null;
-  let currentNationwideMessage = "";
+  let lastNationwideContent = null; // 現在表示中の全国サマリー本文のスナップショット（コピー用）
 
   function findChild(el, ns, tag){
     if(!el) return null;
@@ -1188,24 +1193,15 @@
     };
   }
 
+  // 全国サマリーパネル（常設。差分の有無にかかわらず毎回最新状態へ上書きする）
+  // このパネルは個別カードのフィードには流さず、直接コピーできるボタンのみを提供する。
   function renderNationwideSummary(card){
     el.nwPanel.className = "nw-panel" + (card ? ` lv${card.level}` : "");
-
-    if(card){
-      el.nwTime.textContent = `${card.pub} 更新`;
-      el.nwBodyText.textContent = card.content;
-      currentNationwideMessage = card.message;
-      el.nwCopyBtn.disabled = false;
-      el.nwCopyBtn.style.opacity = "1";
-      el.nwCopyBtn.style.cursor = "pointer";
-    }else{
-      el.nwTime.textContent = "現在アクティブな警報はありません";
-      el.nwBodyText.textContent = "現在、全国で警報・危険警報・特別警報の発表はありません。";
-      currentNationwideMessage = "《全国の気象警報》\n現在、全国で警報・危険警報・特別警報の発表はありません。";
-      el.nwCopyBtn.disabled = false;
-      el.nwCopyBtn.style.opacity = "1";
-      el.nwCopyBtn.style.cursor = "pointer";
-    }
+    el.nwTime.textContent = card ? `${card.pub} 更新` : "現在アクティブな警報はありません";
+    el.nwBodyText.textContent = card
+      ? card.content
+      : "現在、全国で警報・危険警報・特別警報の発表はありません。";
+    lastNationwideContent = card ? card.message : null;
   }
 
   async function runNationwideCycle(){
@@ -1215,16 +1211,10 @@
       const data = await getNationwideWarnings();
       const card = buildNationwideCard(data);
 
+      // パネルは差分の有無にかかわらず毎回更新する。
+      // これにより、ページを開いた瞬間（初回表示）から必ず全国の現況が見える。
+      // 個別警報のフィードカードとしては表示しない（重複表示を避けるため）。
       renderNationwideSummary(card);
-
-      if(!card){
-        lastNationwideContent = null;
-        return;
-      }
-
-      if(card.content !== lastNationwideContent){
-        lastNationwideContent = card.content;
-      }
     }catch(err){
       console.error("[全国集約取得エラー]", err);
       el.nwTime.textContent = "取得エラー";
@@ -1306,6 +1296,35 @@
     return await res.text();
   }
 
+  async function copyTextToClipboard(text, btn, targetPreEl){
+    try{
+      await navigator.clipboard.writeText(text);
+      btn.classList.add("copied");
+      const original = btn.textContent;
+      btn.textContent = "✓ コピーしました";
+      setTimeout(() => {
+        btn.classList.remove("copied");
+        btn.textContent = original;
+      }, 1600);
+    }catch(e){
+      if(targetPreEl){
+        const range = document.createRange();
+        range.selectNodeContents(targetPreEl);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+      const original = btn.textContent;
+      btn.textContent = "選択済み（Ctrl+C）";
+      setTimeout(() => { btn.textContent = original; }, 2000);
+    }
+  }
+
+  el.nwCopyBtn.addEventListener("click", () => {
+    const text = lastNationwideContent || el.nwBodyText.textContent || "";
+    copyTextToClipboard(text, el.nwCopyBtn, el.nwBodyText);
+  });
+
   function renderCard(card){
     el.emptyState.style.display = "none";
 
@@ -1333,25 +1352,9 @@
     wrap.querySelector(".card-body pre").textContent = card.message;
 
     const copyBtn = wrap.querySelector(".copy-btn");
-    copyBtn.addEventListener("click", async () => {
-      try{
-        await navigator.clipboard.writeText(card.message);
-        copyBtn.classList.add("copied");
-        copyBtn.textContent = "✓ コピーしました";
-        setTimeout(() => {
-          copyBtn.classList.remove("copied");
-          copyBtn.textContent = "⧉ コピー";
-        }, 1600);
-      }catch(e){
-        const range = document.createRange();
-        const pre = wrap.querySelector(".card-body pre");
-        range.selectNodeContents(pre);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-        copyBtn.textContent = "選択済み（Ctrl+C）";
-        setTimeout(() => { copyBtn.textContent = "⧉ コピー"; }, 2000);
-      }
+    const preEl = wrap.querySelector(".card-body pre");
+    copyBtn.addEventListener("click", () => {
+      copyTextToClipboard(card.message, copyBtn, preEl);
     });
 
     el.feed.prepend(wrap);
@@ -1461,28 +1464,6 @@
 
   el.refreshBtn.addEventListener("click", () => { runNationwideCycle(); runCycle(); });
 
-  el.nwCopyBtn.addEventListener("click", async () => {
-    try{
-      await navigator.clipboard.writeText(currentNationwideMessage || "");
-      el.nwCopyBtn.classList.add("copied");
-      el.nwCopyBtn.textContent = "✓ コピーしました";
-      setTimeout(() => {
-        el.nwCopyBtn.classList.remove("copied");
-        el.nwCopyBtn.textContent = "⧉ コピー";
-      }, 1600);
-    }catch(e){
-      const range = document.createRange();
-      range.selectNodeContents(el.nwBodyText);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-      el.nwCopyBtn.textContent = "選択済み（Ctrl+C）";
-      setTimeout(() => {
-        el.nwCopyBtn.textContent = "⧉ コピー";
-      }, 2000);
-    }
-  });
-
   document.addEventListener("visibilitychange", () => {
     if(document.hidden){
       stopTimer();
@@ -1495,4 +1476,22 @@
 
   function tickClock(){
     const d = new Date();
-    el.clockTime.textContent = d.toLocale
+    el.clockTime.textContent = d.toLocaleTimeString("ja-JP", { hour12: false });
+    el.clockDate.textContent = d.toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  // 起動時は自動更新をオフのまま、全国サマリーと最新フィードを一度だけ取得する。
+  // 「監視中」を継続表示させたい場合は、自動更新スイッチをオンにしてください。
+  async function init(){
+    setStatus(false, "監視停止中");
+    await runNationwideCycle();
+    await runCycle();
+    setStatus(false, "監視停止中");
+  }
+  init();
+})();
+</script>
+</body>
+</html>
