@@ -629,7 +629,7 @@
     `${WARNING_R8_BASE_URL}/{regionCode}.json（全国${Object.keys(regionCodeByName).length}地域を集約）`;
 
   let areaDataCache = null;
-  let lastNationwideContent = null; // 現在表示中の全国サマリー本文のスナップショット（コピー用）
+  let lastNationwideMessage = null; // 現在表示中の全国サマリーの従来フォーマット本文（コピー用）
 
   function findChild(el, ns, tag){
     if(!el) return null;
@@ -1201,7 +1201,7 @@
     el.nwBodyText.textContent = card
       ? card.content
       : "現在、全国で警報・危険警報・特別警報の発表はありません。";
-    lastNationwideContent = card ? card.message : null;
+    lastNationwideMessage = card ? card.message : null;
   }
 
   async function runNationwideCycle(){
@@ -1321,7 +1321,7 @@
   }
 
   el.nwCopyBtn.addEventListener("click", () => {
-    const text = lastNationwideContent || el.nwBodyText.textContent || "";
+    const text = lastNationwideMessage || el.nwBodyText.textContent || "";
     copyTextToClipboard(text, el.nwCopyBtn, el.nwBodyText);
   });
 
