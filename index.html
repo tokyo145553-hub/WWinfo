@@ -263,7 +263,6 @@
   .banner.show{ display:block; }
   .banner a{ color: #ffd7cf; }
 
-  /* ---------- 全国サマリーパネル（常設・毎回最新状態に上書きされる） ---------- */
   .nw-panel{
     position: relative;
     background: var(--panel);
@@ -400,7 +399,7 @@
 
   .copy-btn{
     flex: none;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 6px;
     font-size: 11.5px;
@@ -492,7 +491,10 @@
   <section class="nw-panel" id="nwPanel">
     <div class="nw-head">
       <div class="nw-title"><span class="nw-dot"></span>全国の気象警報（現在発表中）</div>
-      <div class="nw-time" id="nwTime">取得中…</div>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <div class="nw-time" id="nwTime">取得中…</div>
+        <button class="copy-btn" id="nwCopyBtn" type="button">⧉ コピー</button>
+      </div>
     </div>
     <div class="nw-body"><pre id="nwBodyText">全国の警報データを取得しています…</pre></div>
   </section>
@@ -621,7 +623,8 @@
     `${WARNING_R8_BASE_URL}/{regionCode}.json（全国${Object.keys(regionCodeByName).length}地域を集約）`;
 
   let areaDataCache = null;
-  let lastNationwideContent = null; // 時刻を除いた本文の直近スナップショット（差分検知用）
+  let lastNationwideContent = null;
+  let currentNationwideMessage = "";
 
   function findChild(el, ns, tag){
     if(!el) return null;
@@ -1185,13 +1188,24 @@
     };
   }
 
-  // 全国サマリーパネル（常設。差分の有無にかかわらず毎回最新状態へ上書きする）
   function renderNationwideSummary(card){
     el.nwPanel.className = "nw-panel" + (card ? ` lv${card.level}` : "");
-    el.nwTime.textContent = card ? `${card.pub} 更新` : "現在アクティブな警報はありません";
-    el.nwBodyText.textContent = card
-      ? card.content
-      : "現在、全国で警報・危険警報・特別警報の発表はありません。";
+
+    if(card){
+      el.nwTime.textContent = `${card.pub} 更新`;
+      el.nwBodyText.textContent = card.content;
+      currentNationwideMessage = card.message;
+      el.nwCopyBtn.disabled = false;
+      el.nwCopyBtn.style.opacity = "1";
+      el.nwCopyBtn.style.cursor = "pointer";
+    }else{
+      el.nwTime.textContent = "現在アクティブな警報はありません";
+      el.nwBodyText.textContent = "現在、全国で警報・危険警報・特別警報の発表はありません。";
+      currentNationwideMessage = "《全国の気象警報》\n現在、全国で警報・危険警報・特別警報の発表はありません。";
+      el.nwCopyBtn.disabled = false;
+      el.nwCopyBtn.style.opacity = "1";
+      el.nwCopyBtn.style.cursor = "pointer";
+    }
   }
 
   async function runNationwideCycle(){
@@ -1201,8 +1215,6 @@
       const data = await getNationwideWarnings();
       const card = buildNationwideCard(data);
 
-      // パネルは差分の有無にかかわらず毎回更新する。
-      // これにより、ページを開いた瞬間（初回表示）から必ず全国の現況が見える。
       renderNationwideSummary(card);
 
       if(!card){
@@ -1212,7 +1224,6 @@
 
       if(card.content !== lastNationwideContent){
         lastNationwideContent = card.content;
-        renderCard(card);
       }
     }catch(err){
       console.error("[全国集約取得エラー]", err);
@@ -1268,6 +1279,7 @@
     nwPanel: document.getElementById("nwPanel"),
     nwTime: document.getElementById("nwTime"),
     nwBodyText: document.getElementById("nwBodyText"),
+    nwCopyBtn: document.getElementById("nwCopyBtn"),
   };
 
   function showError(msg){
@@ -1449,6 +1461,28 @@
 
   el.refreshBtn.addEventListener("click", () => { runNationwideCycle(); runCycle(); });
 
+  el.nwCopyBtn.addEventListener("click", async () => {
+    try{
+      await navigator.clipboard.writeText(currentNationwideMessage || "");
+      el.nwCopyBtn.classList.add("copied");
+      el.nwCopyBtn.textContent = "✓ コピーしました";
+      setTimeout(() => {
+        el.nwCopyBtn.classList.remove("copied");
+        el.nwCopyBtn.textContent = "⧉ コピー";
+      }, 1600);
+    }catch(e){
+      const range = document.createRange();
+      range.selectNodeContents(el.nwBodyText);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      el.nwCopyBtn.textContent = "選択済み（Ctrl+C）";
+      setTimeout(() => {
+        el.nwCopyBtn.textContent = "⧉ コピー";
+      }, 2000);
+    }
+  });
+
   document.addEventListener("visibilitychange", () => {
     if(document.hidden){
       stopTimer();
@@ -1461,22 +1495,4 @@
 
   function tickClock(){
     const d = new Date();
-    el.clockTime.textContent = d.toLocaleTimeString("ja-JP", { hour12: false });
-    el.clockDate.textContent = d.toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
-  }
-  tickClock();
-  setInterval(tickClock, 1000);
-
-  // 起動時は自動更新をオフのまま、全国サマリーと最新フィードを一度だけ取得する。
-  // 「監視中」を継続表示させたい場合は、自動更新スイッチをオンにしてください。
-  async function init(){
-    setStatus(false, "監視停止中");
-    await runNationwideCycle();
-    await runCycle();
-    setStatus(false, "監視停止中");
-  }
-  init();
-})();
-</script>
-</body>
-</html>
+    el.clockTime.textContent = d.toLocale
